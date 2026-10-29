@@ -1,22 +1,20 @@
 // Data processing, normalization, mapping, and calculations
 
-export const SECTION_CONFIG = [
-  { key: 'verbal', name: 'Verbal Ability', label: 'Verbal(10M)', max: 10, defaultHeader: 'Verbal(10M)' },
-  { key: 'java', name: 'Java MCQs', label: 'Java MCQ\'s (20M)', max: 20, defaultHeader: 'Java MCQ\'s (20M)' },
-  { key: 'coding', name: 'Hands-on Coding', label: 'Coding (20M)', max: 20, defaultHeader: 'Coding (20M)' },
+export const DEFAULT_SECTION_CONFIG = [
+  { key: 'verbal', name: 'Verbal Ability', label: 'Verbal (10M)', max: 10, header: 'Verbal(10M)' },
+  { key: 'java', name: 'Java MCQs', label: 'Java MCQ\'s (20M)', max: 20, header: 'Java MCQ\'s (20M)' },
+  { key: 'coding', name: 'Hands-on Coding', label: 'Coding (20M)', max: 20, header: 'Coding (20M)' },
 ];
 
+export const SECTION_CONFIG = DEFAULT_SECTION_CONFIG;
 export const TOTAL_MAX = 50;
 
 export const TARGET_FIELDS = [
-  { key: 'id', label: 'Member Id', required: true, patterns: [/member[\s_-]*id/i, /roll[\s_-]*no/i, /reg[\s_-]*no/i, /student[\s_-]*id/i, /^id$/i] },
+  { key: 'id', label: 'Member Id', required: true, patterns: [/member[\s_-]*id/i, /roll[\s_-]*no/i, /reg[\s_-]*no/i, /student[\s_-]*id/i, /^id$/i, /hall[\s_-]*ticket/i, /usn/i, /htno/i] },
   { key: 'name', label: 'Student Name', required: true, patterns: [/student[\s_-]*name/i, /^name$/i, /candidate[\s_-]*name/i, /full[\s_-]*name/i] },
   { key: 'email', label: 'Email', required: false, patterns: [/email/i, /mail/i] },
-  { key: 'group', label: 'Groups', required: true, patterns: [/group/i, /section/i, /branch/i, /batch/i, /class/i] },
-  { key: 'verbal', label: 'Verbal (10M)', required: false, patterns: [/verbal/i, /english/i, /reading/i] },
-  { key: 'java', label: 'Java MCQ\'s (20M)', required: false, patterns: [/java/i, /mcq/i, /aptitude/i] },
-  { key: 'coding', label: 'Coding (20M)', required: false, patterns: [/code/i, /coding/i, /programming/i, /hands[\s_-]*on/i] },
-  { key: 'total', label: 'Total (50M)', required: false, patterns: [/total/i, /aggregate/i, /overall/i, /score$/i] }
+  { key: 'group', label: 'Groups', required: true, patterns: [/group/i, /^section$/i, /branch/i, /batch/i, /^class$/i, /dept/i, /division/i] },
+  { key: 'total', label: 'Total Score', required: false, patterns: [/total/i, /aggregate/i, /overall/i, /score$/i] }
 ];
 
 /**
@@ -48,16 +46,223 @@ export function parseScoreCell(rawVal) {
 }
 
 /**
+ * Canonicalizes test section names and keys so that naming variations across multiple files
+ * (e.g. "Java MCQ's (20M)" and "Java MCQ (20M)", "Verbal Ability" and "Verbal (10M)",
+ * "Hands-on Coding" and "Coding (20M)") correctly map to the same section.
+ */
+export function canonicalizeSection(rawHeader, maxMark = 20) {
+  let cleanName = String(rawHeader || '')
+    .replace(/\s*(?:\(|\[|\/|\-)\s*\d+(?:\.\d+)?\s*(?:m|marks)?(?:\)|\])?$/i, '')
+    .replace(/\s*\d+(?:\.\d+)?\s*(?:m|marks)\b/i, '')
+    .trim();
+
+  if (!cleanName) cleanName = String(rawHeader).trim();
+
+  // Normalize apostrophes, plurals, and special characters
+  const normalized = cleanName
+    .replace(/['’]s\b/gi, '')
+    .replace(/\bmcqs\b/gi, 'mcq')
+    .replace(/\bquestions\b/gi, 'question')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  let canonicalKey = normalized.replace(/\s+/g, '_');
+  let displayName = cleanName.replace(/['’]s\b/gi, '');
+
+  // Unify standard academic test sections across multi-file naming differences
+  if (/^java\b.*mcq/i.test(normalized) || /^mcq\b.*java/i.test(normalized) || /^java$/i.test(normalized)) {
+    canonicalKey = 'java_mcq';
+    displayName = "Java MCQ's";
+  } else if (/^verbal\b/i.test(normalized) || /^english\b/i.test(normalized)) {
+    canonicalKey = 'verbal';
+    displayName = 'Verbal';
+  } else if (/(?:hands[\s_-]*on[\s_-]*)?coding\b/i.test(normalized) || /^programming\b/i.test(normalized)) {
+    canonicalKey = 'coding';
+    displayName = 'Coding';
+  } else if (/^(?:quant(?:itative)?[\s_-]*)?aptitude\b/i.test(normalized)) {
+    canonicalKey = 'aptitude';
+    displayName = 'Aptitude';
+  } else if (/^(?:logical[\s_-]*)?reasoning\b/i.test(normalized)) {
+    canonicalKey = 'reasoning';
+    displayName = 'Reasoning';
+  } else if (/^python\b/i.test(normalized)) {
+    canonicalKey = 'python';
+    displayName = 'Python';
+  }
+
+  if (!canonicalKey) canonicalKey = 'sec_score';
+
+  return {
+    key: canonicalKey,
+    name: displayName,
+    label: `${displayName} (${maxMark}M)`,
+    max: maxMark,
+    header: rawHeader
+  };
+}
+
+/**
+ * Dynamically detects test assessment sections and their max marks from data headers and rows.
+ */
+export function detectSectionsFromData(headers, rows = []) {
+  if (!headers || headers.length === 0) {
+    return [...DEFAULT_SECTION_CONFIG];
+  }
+
+  // Regexes to identify non-section columns
+  const isIdPattern = /^(?:member[\s_-]*id|roll[\s_-]*no|reg[\s_-]*no|student[\s_-]*id|^id$|hall[\s_-]*ticket|usn|htno)$/i;
+  const isNamePattern = /^(?:student[\s_-]*name|^name$|candidate[\s_-]*name|full[\s_-]*name)$/i;
+  const isEmailPattern = /^(?:email|mail|e-mail)$/i;
+  const isTotalPattern = /^(?:total|grand[\s_-]*total|overall|aggregate|total[\s_-]*score|total[\s_-]*marks|final[\s_-]*score|^score)$/i;
+  const isMetaPattern = /^(?:rank|percentage|pct|result|status|grade|remarks|source[\s_-]*sheet|source[\s_-]*file|s[\s_-]*no|sl[\s_-]*no)$/i;
+  const isGroupPattern = /^(?:group|groups|class|branch|batch|dept|department|division|^section)$/i;
+
+  const detectedSections = [];
+  const usedKeys = new Set();
+
+  headers.forEach((header, idx) => {
+    const rawH = String(header).trim();
+    if (!rawH) return;
+
+    // Cleaned header without parentheses/brackets for regex checking
+    const baseH = rawH.replace(/\s*(?:\(|\[|\/|\-|\:).*/, '').trim();
+
+    // Check if it's explicitly an ID, Name, Email, Total, or Meta column
+    if (
+      isIdPattern.test(rawH) || isIdPattern.test(baseH) ||
+      isNamePattern.test(rawH) || isNamePattern.test(baseH) ||
+      isEmailPattern.test(rawH) || isEmailPattern.test(baseH) ||
+      isTotalPattern.test(rawH) || isTotalPattern.test(baseH) ||
+      isMetaPattern.test(rawH) || isMetaPattern.test(baseH)
+    ) {
+      return;
+    }
+
+    // Check if it's a student class/group column
+    if (isGroupPattern.test(rawH) || isGroupPattern.test(baseH)) {
+      // Check sample rows: if text values like "AIML", "CSE-1", "A", it's student groups, not a score section
+      const sampleVals = rows.slice(0, 15).map(r => r[header]).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
+      const isTextGroups = sampleVals.some(v => isNaN(Number(v)) && !['NA', 'N/A', 'AB', 'ABSENT', '-'].includes(String(v).trim().toUpperCase()));
+      if (isTextGroups || sampleVals.length === 0) {
+        return; // It's a student group column, skip
+      }
+    }
+
+    // Check known subject keywords or test score patterns
+    const isKnownSubject = /(?:verbal|english|java|coding|aptitude|reasoning|python|c\+\+|sql|technical|dsa|math|quantitative|logical|module|test|section|part|paper)/i.test(rawH);
+
+    // Sample rows in this column
+    const sampleVals = rows.slice(0, 25).map(r => r[header]).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
+    let numericOrNaCount = 0;
+    sampleVals.forEach(v => {
+      const parsed = parseScoreCell(v);
+      if (parsed.isAttempted || ['NA', 'N/A', 'AB', 'ABSENT', '-'].includes(String(v).trim().toUpperCase())) {
+        numericOrNaCount++;
+      }
+    });
+
+    const isScoreColumn = isKnownSubject || (sampleVals.length > 0 && numericOrNaCount / sampleVals.length >= 0.4);
+    if (!isScoreColumn && sampleVals.length > 0) {
+      return;
+    }
+
+    // Extract Max Marks from header like (20M), (20 Marks), [25], / 20, (10), etc.
+    let maxMark = null;
+    const markMatch = rawH.match(/(?:(?:\(|\[|\/|\-)\s*(\d+(?:\.\d+)?)\s*(?:m|marks)?(?:\)|\])?$)|(?:(?:^|\s)(\d+(?:\.\d+)?)\s*(?:m|marks)\b)/i);
+    if (markMatch) {
+      maxMark = parseFloat(markMatch[1] || markMatch[2]);
+    }
+
+    // If max mark not in header, check maximum numeric score seen in rows
+    if (!maxMark || isNaN(maxMark) || maxMark <= 0) {
+      let maxSeen = 0;
+      rows.forEach(r => {
+        const p = parseScoreCell(r[header]);
+        if (p.isAttempted && p.score > maxSeen) {
+          maxSeen = p.score;
+        }
+      });
+
+      if (maxSeen > 0) {
+        if (maxSeen <= 10) maxMark = 10;
+        else if (maxSeen <= 20) maxMark = 20;
+        else if (maxSeen <= 25) maxMark = 25;
+        else if (maxSeen <= 30) maxMark = 30;
+        else if (maxSeen <= 50) maxMark = 50;
+        else if (maxSeen <= 100) maxMark = 100;
+        else maxMark = Math.ceil(maxSeen / 10) * 10;
+      } else {
+        maxMark = 20;
+      }
+    }
+
+    // Canonicalize section name & key across multiple files
+    const canonical = canonicalizeSection(rawH, maxMark);
+
+    let uniqueKey = canonical.key;
+    let counter = 1;
+    while (usedKeys.has(uniqueKey)) {
+      uniqueKey = `${canonical.key}_${counter++}`;
+    }
+    usedKeys.add(uniqueKey);
+
+    detectedSections.push({
+      key: uniqueKey,
+      name: canonical.name,
+      label: `${canonical.name} (${maxMark}M)`,
+      max: maxMark,
+      header: rawH
+    });
+  });
+
+  if (detectedSections.length === 0) {
+    return [...DEFAULT_SECTION_CONFIG];
+  }
+
+  return detectedSections;
+}
+
+/**
+ * Calculates total max marks for the test based on detected sections and header.
+ */
+export function detectTotalMax(headers, detectedSections = [], rows = []) {
+  if (headers && headers.length > 0) {
+    for (const h of headers) {
+      if (/^(?:total|grand[\s_-]*total|overall|aggregate)/i.test(h.trim())) {
+        const match = h.match(/(?:(?:\(|\[|\/|\-)\s*(\d+(?:\.\d+)?)\s*(?:m|marks)?(?:\)|\])?$)|(?:(?:^|\s)(\d+(?:\.\d+)?)\s*(?:m|marks)\b)/i);
+        if (match) {
+          const val = parseFloat(match[1] || match[2]);
+          if (val > 0) return val;
+        }
+      }
+    }
+  }
+
+  if (detectedSections && detectedSections.length > 0) {
+    const sum = detectedSections.reduce((acc, s) => acc + s.max, 0);
+    if (sum > 0) return sum;
+  }
+
+  return 50;
+}
+
+/**
  * Auto-detects best column mapping from a list of header strings.
  */
-export function autoDetectMapping(headers) {
-  const mapping = {};
+export function autoDetectMapping(headers, detectedSections = []) {
+  const mapping = {
+    id: '',
+    name: '',
+    email: '',
+    group: '',
+    total: '',
+    sections: {}
+  };
   const used = new Set();
 
   for (const field of TARGET_FIELDS) {
     let matchedHeader = null;
-
-    // First try exact or strong regex pattern match
     for (const h of headers) {
       if (used.has(h)) continue;
       const cleanH = h.trim();
@@ -78,16 +283,32 @@ export function autoDetectMapping(headers) {
     }
   }
 
+  // Map each detected section to its column header
+  detectedSections.forEach(sec => {
+    mapping.sections[sec.key] = sec.header;
+    used.add(sec.header);
+    if (['verbal', 'java', 'coding'].includes(sec.key)) {
+      mapping[sec.key] = sec.header;
+    }
+    if (sec.key === 'java_mcq') {
+      mapping['java'] = sec.header;
+    }
+  });
+
   return mapping;
 }
 
 /**
  * Normalizes raw rows into structured Student records.
  */
-export function normalizeStudentRows(rows, mapping, sourceInfo = {}) {
+export function normalizeStudentRows(rows, mapping, sourceInfo = {}, detectedSections = [], totalMax = 50) {
   const students = [];
   const idCounts = {};
   const parseIssues = [];
+
+  const effectiveSections = detectedSections && detectedSections.length > 0
+    ? detectedSections
+    : DEFAULT_SECTION_CONFIG;
 
   // Pass 1: create student objects and count member IDs
   rows.forEach((rawRow, idx) => {
@@ -101,45 +322,49 @@ export function normalizeStudentRows(rows, mapping, sourceInfo = {}) {
     const rawEmail = mapping.email ? rawRow[mapping.email] : (rawRow['Email'] || '');
     const email = String(rawEmail || '').trim();
 
-    const rawGroup = mapping.group ? rawRow[mapping.group] : (rawRow['Groups'] || rawRow['Group'] || 'General');
+    const rawGroup = mapping.group ? rawRow[mapping.group] : (rawRow['Groups'] || rawRow['Group'] || rawRow['Section'] || 'General');
     const group = String(rawGroup || 'General').trim();
 
-    // Parse sections
-    const verbalData = parseScoreCell(mapping.verbal ? rawRow[mapping.verbal] : rawRow['Verbal(10M)']);
-    const javaData = parseScoreCell(mapping.java ? rawRow[mapping.java] : rawRow['Java MCQ\'s (20M)']);
-    const codingData = parseScoreCell(mapping.coding ? rawRow[mapping.coding] : rawRow['Coding (20M)']);
-
-    if (verbalData.isError) parseIssues.push({ row: idx + 1, id, field: 'Verbal', value: verbalData.raw });
-    if (javaData.isError) parseIssues.push({ row: idx + 1, id, field: 'Java', value: javaData.raw });
-    if (codingData.isError) parseIssues.push({ row: idx + 1, id, field: 'Coding', value: codingData.raw });
-
-    const sections = {
-      verbal: verbalData,
-      java: javaData,
-      coding: codingData
-    };
-
-    // Count attempts
+    // Parse all detected sections dynamically
+    const sections = {};
     let attemptedCount = 0;
     let attemptedScoreSum = 0;
     let attemptedMaxSum = 0;
 
-    SECTION_CONFIG.forEach(sec => {
-      const secData = sections[sec.key];
-      if (secData && secData.isAttempted && secData.score !== null) {
+    effectiveSections.forEach(sec => {
+      const colHeader = (mapping.sections && mapping.sections[sec.key]) || mapping[sec.key] || sec.header;
+      const rawCell = rawRow[colHeader];
+      const parsed = parseScoreCell(rawCell);
+
+      if (parsed.isError) {
+        parseIssues.push({ row: idx + 1, id, field: sec.name, value: parsed.raw });
+      }
+
+      sections[sec.key] = {
+        key: sec.key,
+        name: sec.name,
+        label: sec.label,
+        max: sec.max,
+        isAttempted: parsed.isAttempted,
+        score: parsed.score,
+        raw: parsed.raw,
+        isError: parsed.isError
+      };
+
+      if (parsed.isAttempted && parsed.score !== null) {
         attemptedCount++;
-        attemptedScoreSum += secData.score;
+        attemptedScoreSum += parsed.score;
         attemptedMaxSum += sec.max;
       }
     });
 
-    const unattemptedCount = SECTION_CONFIG.length - attemptedCount;
+    const unattemptedCount = effectiveSections.length - attemptedCount;
     const isPartial = unattemptedCount > 0;
 
-    // Total handling:
+    // Total handling
     let totalScore = 0;
     let totalSuppliedInFile = false;
-    let totalCell = mapping.total ? rawRow[mapping.total] : rawRow['Total (50M)'];
+    let totalCell = mapping.total ? rawRow[mapping.total] : (rawRow['Total (50M)'] || rawRow['Total']);
 
     if (totalCell !== undefined && totalCell !== null && String(totalCell).trim() !== '') {
       const parsedTotal = parseScoreCell(totalCell);
@@ -153,20 +378,16 @@ export function normalizeStudentRows(rows, mapping, sourceInfo = {}) {
       totalScore = attemptedScoreSum;
     }
 
-    // Percentage calculation: overall test percentage against full 50M
-    const percentage = Number(((totalScore / TOTAL_MAX) * 100).toFixed(1));
+    const percentage = totalMax > 0 ? Number(((totalScore / totalMax) * 100).toFixed(1)) : 0;
     const attemptedPercentage = attemptedMaxSum > 0 ? Number(((attemptedScoreSum / attemptedMaxSum) * 100).toFixed(1)) : 0;
 
-    students.push({
+    const studentRecord = {
       originalIndex: idx,
       id,
       name,
       email,
       group,
       sections,
-      verbal: verbalData,
-      java: javaData,
-      coding: codingData,
       totalScore,
       totalSuppliedInFile,
       attemptedCount,
@@ -180,7 +401,19 @@ export function normalizeStudentRows(rows, mapping, sourceInfo = {}) {
       sourceFile: sourceInfo.fileName || 'Spreadsheet',
       isDuplicate: false,
       duplicateSheets: []
+    };
+
+    // Attach section objects directly onto student object
+    effectiveSections.forEach(sec => {
+      studentRecord[sec.key] = sections[sec.key];
     });
+
+    // Backward-compatibility aliases for verbal, java, coding
+    studentRecord.verbal = sections.verbal || { isAttempted: false, score: 0, raw: 'NA' };
+    studentRecord.java = sections.java_mcq || sections.java || { isAttempted: false, score: 0, raw: 'NA' };
+    studentRecord.coding = sections.coding || { isAttempted: false, score: 0, raw: 'NA' };
+
+    students.push(studentRecord);
   });
 
   // Pass 2: mark duplicates within this sheet
@@ -200,14 +433,43 @@ export function normalizeStudentRows(rows, mapping, sourceInfo = {}) {
 }
 
 /**
- * Computes dashboard aggregates from a list of students.
+ * Computes dashboard aggregates from a list of students based on dynamically detected sections.
  */
-export function computeDashboardAggregates(students, threshold = 40) {
+export function computeDashboardAggregates(students, threshold = 40, detectedSections = null, totalMax = null) {
   const count = students.length;
+
+  // Resolve sections dynamically from parameter or student records or default
+  const sections = detectedSections && detectedSections.length > 0
+    ? detectedSections
+    : (students.length > 0 && students[0].sections && Object.keys(students[0].sections).length > 0
+        ? Object.values(students[0].sections)
+        : DEFAULT_SECTION_CONFIG);
+
+  const maxTotal = totalMax || (sections.length > 0 ? sections.reduce((acc, s) => acc + s.max, 0) : 50);
+
   if (count === 0) {
+    const emptySecStats = {};
+    sections.forEach(s => {
+      emptySecStats[s.key] = {
+        key: s.key,
+        name: s.name,
+        label: s.label || `${s.name} (${s.max}M)`,
+        max: s.max,
+        average: 0,
+        avgPct: 0,
+        highest: 0,
+        attemptedCount: 0,
+        unattemptedCount: 0,
+        zeroCount: 0,
+        attemptRate: 0
+      };
+    });
+
     return {
       totalStudents: 0,
       totalGroups: 0,
+      totalMax: maxTotal,
+      detectedSections: sections,
       averageTotal: 0,
       highestTotal: 0,
       highestStudents: [],
@@ -216,11 +478,7 @@ export function computeDashboardAggregates(students, threshold = 40) {
       fullyAttemptedCount: 0,
       passCount: 0,
       passRate: 0,
-      sectionStats: {
-        verbal: { average: 0, avgPct: 0, highest: 0, attemptedCount: 0, unattemptedCount: 0, zeroCount: 0, attemptRate: 0 },
-        java: { average: 0, avgPct: 0, highest: 0, attemptedCount: 0, unattemptedCount: 0, zeroCount: 0, attemptRate: 0 },
-        coding: { average: 0, avgPct: 0, highest: 0, attemptedCount: 0, unattemptedCount: 0, zeroCount: 0, attemptRate: 0 }
-      },
+      sectionStats: emptySecStats,
       groupStats: [],
       scoreDistribution: [0, 0, 0, 0],
       attemptBreakdown: { full: 0, partial1: 0, partial2: 0, none: 0 }
@@ -237,14 +495,17 @@ export function computeDashboardAggregates(students, threshold = 40) {
   let highestTotal = -Infinity;
   let highestStudents = [];
 
-  // Section accumulators
-  const sectionAccumulators = {
-    verbal: { sum: 0, attempted: 0, unattempted: 0, zero: 0, max: -Infinity },
-    java: { sum: 0, attempted: 0, unattempted: 0, zero: 0, max: -Infinity },
-    coding: { sum: 0, attempted: 0, unattempted: 0, zero: 0, max: -Infinity }
-  };
+  // Section accumulators for each detected section
+  const sectionAccumulators = {};
+  sections.forEach(sec => {
+    sectionAccumulators[sec.key] = { sum: 0, attempted: 0, unattempted: 0, zero: 0, max: -Infinity };
+  });
 
-  // Score distribution buckets: [0-19, 20-29, 30-39, 40-50]
+  // Score distribution thresholds based on test's max total
+  const b1 = maxTotal * 0.4;
+  const b2 = maxTotal * 0.6;
+  const b3 = maxTotal * 0.8;
+
   const scoreDistribution = [0, 0, 0, 0];
   const attemptBreakdown = { full: 0, partial1: 0, partial2: 0, none: 0 };
 
@@ -256,9 +517,8 @@ export function computeDashboardAggregates(students, threshold = 40) {
       fullyAttemptedCount++;
     }
 
-    if (s.attemptedCount === 3) attemptBreakdown.full++;
-    else if (s.attemptedCount === 2) attemptBreakdown.partial1++;
-    else if (s.attemptedCount === 1) attemptBreakdown.partial2++;
+    if (s.attemptedCount === sections.length) attemptBreakdown.full++;
+    else if (s.attemptedCount > 0) attemptBreakdown.partial1++;
     else attemptBreakdown.none++;
 
     // Totals & Highs
@@ -280,16 +540,19 @@ export function computeDashboardAggregates(students, threshold = 40) {
 
     // Distribution
     const t = s.totalScore;
-    if (t < 20) scoreDistribution[0]++;
-    else if (t < 30) scoreDistribution[1]++;
-    else if (t < 40) scoreDistribution[2]++;
+    if (t < b1) scoreDistribution[0]++;
+    else if (t < b2) scoreDistribution[1]++;
+    else if (t < b3) scoreDistribution[2]++;
     else scoreDistribution[3]++;
 
-    // Section calculations (Excluding NAs from section average)
-    SECTION_CONFIG.forEach(sec => {
-      const cell = s.sections[sec.key];
+    // Section calculations for all detected sections
+    sections.forEach(sec => {
+      let cell = (s.sections && s.sections[sec.key]) || s[sec.key];
+      if (!cell && sec.key === 'java_mcq') {
+        cell = (s.sections && (s.sections['java_mcq_s'] || s.sections['java'])) || s.java_mcq_s || s.java;
+      }
       const acc = sectionAccumulators[sec.key];
-      if (cell.isAttempted && cell.score !== null) {
+      if (cell && cell.isAttempted && cell.score !== null) {
         acc.attempted++;
         acc.sum += cell.score;
         if (cell.score === 0) acc.zero++;
@@ -322,15 +585,16 @@ export function computeDashboardAggregates(students, threshold = 40) {
   const passRate = Number(((passCount / count) * 100).toFixed(1));
   const studentsWithNA_Pct = Number(((studentsWithNA / count) * 100).toFixed(1));
 
-  // Build section stats
+  // Build section stats for each detected section
   const sectionStats = {};
-  SECTION_CONFIG.forEach(sec => {
+  sections.forEach(sec => {
     const acc = sectionAccumulators[sec.key];
     const avg = acc.attempted > 0 ? Number((acc.sum / acc.attempted).toFixed(1)) : 0;
     const hi = acc.max === -Infinity ? 0 : acc.max;
     sectionStats[sec.key] = {
+      key: sec.key,
       name: sec.name,
-      label: sec.label,
+      label: sec.label || `${sec.name} (${sec.max}M)`,
       max: sec.max,
       average: avg,
       avgPct: Number(((avg / sec.max) * 100).toFixed(1)),
@@ -357,6 +621,8 @@ export function computeDashboardAggregates(students, threshold = 40) {
   return {
     totalStudents: count,
     totalGroups: groupMap.size,
+    totalMax: maxTotal,
+    detectedSections: sections,
     averageTotal,
     highestTotal: highestTotal === -Infinity ? 0 : highestTotal,
     highestStudents,

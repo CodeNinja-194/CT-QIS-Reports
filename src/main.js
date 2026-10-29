@@ -1,18 +1,21 @@
-// CT-QISCET Test Reports - Main Application Controller
+// CT-QIS Test Reports - Main Application Controller
 import * as XLSX from 'xlsx';
-import { SAMPLE_SHEET_1, SAMPLE_SHEET_2 } from './sample-data.js';
 import {
-  SECTION_CONFIG,
+  DEFAULT_SECTION_CONFIG,
   TOTAL_MAX,
+  detectSectionsFromData,
+  detectTotalMax,
   autoDetectMapping,
   normalizeStudentRows,
-  computeDashboardAggregates
+  computeDashboardAggregates,
+  parseScoreCell
 } from './data-processor.js';
 import { DashboardCharts } from './charts-manager.js';
+import { downloadIndividualStudentPdf, downloadClassWiseProgressReportPdf } from './pdf-generator.js';
 
 // Application State
 const state = {
-  // Collection of uploaded sheets: [{ id, name, fileName, rawRows, headers, mapping, students, duplicateCount, parseIssues }]
+  // Collection of uploaded sheets: [{ id, name, fileName, rawRows, headers, detectedSections, totalMax, mapping, students, duplicateCount, parseIssues }]
   sheets: [],
   viewMode: 'single', // 'single' | 'multiple'
   activeSheetId: null,
@@ -83,7 +86,7 @@ function formatScoreCell(cellData, maxScore) {
     return `<span class="score-badge tier-zero" title="Attempted with 0 marks">0</span>`;
   }
 
-  const pct = (score / maxScore) * 100;
+  const pct = maxScore > 0 ? (score / maxScore) * 100 : 0;
   let tierClass = 'tier-low';
   if (pct >= 75) tierClass = 'tier-high';
   else if (pct >= 40) tierClass = 'tier-mid';
@@ -94,7 +97,7 @@ function formatScoreCell(cellData, maxScore) {
 /**
  * Formats the total score with partial indicator if NA exists
  */
-function formatTotalCell(student) {
+function formatTotalCell(student, totalMax = 50) {
   const isPartial = student.isPartial;
   const scoreText = student.totalScore;
 
@@ -103,7 +106,7 @@ function formatTotalCell(student) {
     return `
       <div class="total-cell-wrap" title="Partial total: ${unattempted} section(s) not attempted">
         <span class="num">${scoreText}</span>
-        <span class="partial-star-tag">* Partial (${unattempted} NA)</span>
+        <span class="partial-star-tag">* Partial</span>
       </div>
     `;
   }
@@ -116,15 +119,65 @@ function formatTotalCell(student) {
 }
 
 /**
+ * Returns detected test sections for the active sheet or multi-sheet union
+ */
+function getActiveSections() {
+  if (state.sheets.length === 0) return DEFAULT_SECTION_CONFIG;
+  if (state.viewMode === 'single') {
+    const cur = state.sheets.find(s => s.id === state.activeSheetId) || state.sheets[0];
+    return cur && cur.detectedSections && cur.detectedSections.length > 0
+      ? cur.detectedSections
+      : DEFAULT_SECTION_CONFIG;
+  } else {
+    // Collect union of sections across all sheets with canonical deduplication
+    const map = new Map();
+    state.sheets.forEach(sh => {
+      (sh.detectedSections || []).forEach(sec => {
+        if (!map.has(sec.key)) {
+          map.set(sec.key, { ...sec });
+        } else {
+          const existing = map.get(sec.key);
+          if (sec.max > existing.max) {
+            existing.max = sec.max;
+            existing.label = `${existing.name} (${sec.max}M)`;
+          }
+        }
+      });
+    });
+    return map.size > 0 ? Array.from(map.values()) : DEFAULT_SECTION_CONFIG;
+  }
+}
+
+/**
+ * Returns total max score for the active dataset
+ */
+function getActiveTotalMax() {
+  if (state.sheets.length === 0) return 50;
+  if (state.viewMode === 'single') {
+    const cur = state.sheets.find(s => s.id === state.activeSheetId) || state.sheets[0];
+    return cur && cur.totalMax ? cur.totalMax : 50;
+  } else {
+    const sheetTotals = state.sheets.map(s => s.totalMax).filter(Boolean);
+    if (sheetTotals.length > 0 && sheetTotals.every(t => t === sheetTotals[0])) {
+      return sheetTotals[0];
+    }
+    const sections = getActiveSections();
+    return sections.length > 0 ? sections.reduce((sum, s) => sum + s.max, 0) : 50;
+  }
+}
+
+/**
  * Initializes sheets from raw data using background auto-detection
  */
 function initializeSheet(sheetRaw) {
   const headers = sheetRaw.columns || Object.keys(sheetRaw.rows[0] || {});
-  const mapping = autoDetectMapping(headers);
+  const detectedSections = detectSectionsFromData(headers, sheetRaw.rows);
+  const totalMax = detectTotalMax(headers, detectedSections, sheetRaw.rows);
+  const mapping = autoDetectMapping(headers, detectedSections);
   const normalized = normalizeStudentRows(sheetRaw.rows, mapping, {
     sheetName: sheetRaw.name,
     fileName: sheetRaw.fileName
-  });
+  }, detectedSections, totalMax);
 
   return {
     id: sheetRaw.id || `sheet-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -132,6 +185,8 @@ function initializeSheet(sheetRaw) {
     fileName: sheetRaw.fileName || 'Spreadsheet.xlsx',
     rawRows: sheetRaw.rows,
     headers,
+    detectedSections,
+    totalMax,
     mapping,
     students: normalized.students,
     duplicateCount: normalized.duplicateCount,
@@ -174,6 +229,7 @@ function getActiveDataset() {
  */
 function getFilteredAndSortedStudents() {
   let list = getActiveDataset();
+  const sections = getActiveSections();
 
   // 1. Search Query Filter
   if (state.searchQuery) {
@@ -193,14 +249,15 @@ function getFilteredAndSortedStudents() {
 
   // 3. Status Tab Filter
   if (state.statusFilter === 'full') {
-    list = list.filter(s => s.attemptedCount === 3);
+    list = list.filter(s => s.attemptedCount === sections.length);
   } else if (state.statusFilter === 'has_na') {
     list = list.filter(s => s.unattemptedCount > 0);
   } else if (state.statusFilter === 'has_zero') {
     list = list.filter(s =>
-      (s.verbal.isAttempted && s.verbal.score === 0) ||
-      (s.java.isAttempted && s.java.score === 0) ||
-      (s.coding.isAttempted && s.coding.score === 0)
+      sections.some(sec => {
+        const c = (s.sections && s.sections[sec.key]) || s[sec.key];
+        return c && c.isAttempted && c.score === 0;
+      })
     );
   } else if (state.statusFilter === 'failed') {
     list = list.filter(s => s.percentage < state.threshold);
@@ -213,18 +270,15 @@ function getFilteredAndSortedStudents() {
   list = [...list].sort((a, b) => {
     let va, vb;
 
-    if (key === 'verbal') {
-      va = a.verbal.isAttempted && a.verbal.score !== null ? a.verbal.score : -1;
-      vb = b.verbal.isAttempted && b.verbal.score !== null ? b.verbal.score : -1;
-    } else if (key === 'java') {
-      va = a.java.isAttempted && a.java.score !== null ? a.java.score : -1;
-      vb = b.java.isAttempted && b.java.score !== null ? b.java.score : -1;
-    } else if (key === 'coding') {
-      va = a.coding.isAttempted && a.coding.score !== null ? a.coding.score : -1;
-      vb = b.coding.isAttempted && b.coding.score !== null ? b.coding.score : -1;
-    } else {
+    if (['id', 'name', 'email', 'group', 'totalScore', 'percentage', 'attemptedCount'].includes(key)) {
       va = a[key];
       vb = b[key];
+    } else {
+      // Dynamic section score sorting
+      const ca = (a.sections && a.sections[key]) || a[key];
+      const cb = (b.sections && b.sections[key]) || b[key];
+      va = ca && ca.isAttempted && ca.score !== null ? ca.score : -1;
+      vb = cb && cb.isAttempted && cb.score !== null ? cb.score : -1;
     }
 
     if (typeof va === 'string') {
@@ -282,6 +336,16 @@ function updateHeaderAndContext() {
   const activeStudents = getActiveDataset();
   contextTotalStudents.innerHTML = `Total Students: <strong>${activeStudents.length}</strong>`;
 
+  // Update Export PDF Label based on selected section or all classes
+  const exportPdfLabel = $('exportPdfLabel');
+  if (exportPdfLabel) {
+    const hasGroupFilter = state.selectedGroups.size > 0;
+    const selectedGroupName = hasGroupFilter ? Array.from(state.selectedGroups)[0] : null;
+    exportPdfLabel.textContent = selectedGroupName
+      ? `Download Progress Report - ${selectedGroupName} (PDF)`
+      : 'Download Progress Report (PDF)';
+  }
+
   // Validation Banner check
   updateValidationBanner();
 }
@@ -291,59 +355,47 @@ function updateHeaderAndContext() {
  */
 function updateValidationBanner() {
   const banner = $('validationBanner');
-  const msg = $('validationMessage');
-
-  let dupCount = 0;
-  let issueCount = 0;
-
-  if (state.viewMode === 'single') {
-    const cur = state.sheets.find(s => s.id === state.activeSheetId);
-    if (cur) {
-      dupCount = cur.duplicateCount;
-      issueCount = cur.parseIssues.length;
-    }
-  } else {
-    dupCount = state.duplicateCount;
-    state.sheets.forEach(s => {
-      issueCount += s.parseIssues.length;
-    });
-  }
-
-  state.duplicateCount = dupCount;
-
-  if (dupCount > 0 || issueCount > 0) {
-    banner.style.display = 'flex';
-    const parts = [];
-    if (dupCount > 0) parts.push(`${dupCount} duplicate Member ID(s) detected`);
-    if (issueCount > 0) parts.push(`${issueCount} unparseable score cell(s) flagged`);
-    msg.textContent = parts.join(' and ') + '. Data was sanitized for reporting.';
-  } else {
+  if (banner) {
     banner.style.display = 'none';
   }
 }
 
 /**
- * Updates KPI Summary Cards & Section Breakdown Cards
+ * Updates KPI Summary Cards & Section Breakdown Cards dynamically
  */
-function updateKPIsAndSections(aggregates) {
+function updateKPIsAndSections(aggregates, selectedGroupName = null) {
+  const totalMax = aggregates.totalMax || 50;
+
   // Main KPIs
   $('kpiTotalStudents').textContent = aggregates.totalStudents;
-  $('kpiSheetsSub').textContent = state.viewMode === 'single'
-    ? 'In active spreadsheet'
-    : `Across ${state.sheets.length} spreadsheets combined`;
+  if (selectedGroupName) {
+    const cleanGroup = selectedGroupName.replace(/2025-2029-Prime-/, '');
+    $('kpiSheetsSub').textContent = `In section: ${cleanGroup}`;
+    $('kpiTotalGroups').textContent = '1';
+    $('kpiGroupsSub').textContent = `Active section: ${cleanGroup}`;
+  } else {
+    $('kpiSheetsSub').textContent = state.viewMode === 'single'
+      ? 'In active spreadsheet'
+      : `Across ${state.sheets.length} spreadsheets combined`;
 
-  $('kpiTotalGroups').textContent = aggregates.totalGroups;
-  $('kpiGroupsSub').textContent = aggregates.totalGroups > 0
-    ? aggregates.groupStats.map(g => g.name.replace(/2025-2029-Prime-/, '')).slice(0, 3).join(', ')
-    : 'No groups found';
+    $('kpiTotalGroups').textContent = aggregates.totalGroups;
+    $('kpiGroupsSub').textContent = aggregates.totalGroups > 0
+      ? aggregates.groupStats.map(g => g.name.replace(/2025-2029-Prime-/, '')).slice(0, 3).join(', ')
+      : 'No groups found';
+  }
 
   $('kpiAverageTotal').textContent = aggregates.averageTotal.toFixed(1);
-  $('kpiAvgPctSub').textContent = `${((aggregates.averageTotal / TOTAL_MAX) * 100).toFixed(1)}% class average`;
+  $('kpiAvgPctSub').textContent = `${((aggregates.averageTotal / totalMax) * 100).toFixed(1)}% class average`;
+  const kpiTotalUnit = document.querySelector('#kpiAverageTotal + .kpi-unit');
+  if (kpiTotalUnit) kpiTotalUnit.textContent = `/ ${totalMax}M`;
 
   $('kpiHighestTotal').textContent = aggregates.highestTotal;
+  const kpiHiUnit = document.querySelector('#kpiHighestTotal + .kpi-unit');
+  if (kpiHiUnit) kpiHiUnit.textContent = `/ ${totalMax}M`;
+
   const hiCount = aggregates.highestStudents.length;
   $('kpiTopStudentsSub').textContent = hiCount > 0
-    ? `${hiCount} top performer${hiCount > 1 ? 's' : ''}`
+    ? `${hiCount} top student${hiCount > 1 ? 's' : ''}`
     : 'Top score recorded';
 
   $('kpiStudentsWithNA').textContent = aggregates.studentsWithNA;
@@ -351,42 +403,79 @@ function updateKPIsAndSections(aggregates) {
 
   $('kpiPassRate').textContent = `${aggregates.passRate}%`;
   $('kpiPassCountSub').textContent = `${aggregates.passCount} of ${aggregates.totalStudents} passed`;
-  $('kpiThresholdLabel').textContent = `Pass Mark: ≥ ${state.threshold}% (${(TOTAL_MAX * state.threshold / 100).toFixed(0)}M)`;
+  $('kpiThresholdLabel').textContent = `Pass Mark: ≥ ${state.threshold}% (${(totalMax * state.threshold / 100).toFixed(0)}M)`;
 
-  // Section Breakdown Cards
-  const sec = aggregates.sectionStats;
+  // Dynamically render section-wise breakdown cards based on detected sections
+  renderSectionBreakdownCards(aggregates);
+}
 
-  // Verbal (10M)
-  $('verbalAvgVal').innerHTML = `${sec.verbal.average.toFixed(1)} <small>/ 10</small>`;
-  $('verbalHighVal').innerHTML = `${sec.verbal.highest} <small>/ 10</small>`;
-  $('verbalAttemptedVal').textContent = `${sec.verbal.attemptedCount} / ${aggregates.totalStudents}`;
-  $('verbalAvgPctChip').textContent = `${sec.verbal.avgPct}% Avg`;
-  $('verbalAttemptRate').textContent = `${sec.verbal.attemptRate}%`;
-  $('verbalAttemptBar').style.width = `${sec.verbal.attemptRate}%`;
+/**
+ * Dynamically renders section cards for all detected sections in the data
+ */
+function renderSectionBreakdownCards(aggregates) {
+  const container = $('sectionCardsGrid');
+  if (!container) return;
 
-  // Java MCQ's (20M)
-  $('javaAvgVal').innerHTML = `${sec.java.average.toFixed(1)} <small>/ 20</small>`;
-  $('javaHighVal').innerHTML = `${sec.java.highest} <small>/ 20</small>`;
-  $('javaAttemptedVal').textContent = `${sec.java.attemptedCount} / ${aggregates.totalStudents}`;
-  $('javaAvgPctChip').textContent = `${sec.java.avgPct}% Avg`;
-  $('javaAttemptRate').textContent = `${sec.java.attemptRate}%`;
-  $('javaAttemptBar').style.width = `${sec.java.attemptRate}%`;
+  const sections = aggregates.detectedSections || [];
+  if (sections.length === 0) {
+    container.innerHTML = '<p class="empty-hint">No section mark columns detected in data.</p>';
+    return;
+  }
 
-  // Coding (20M)
-  $('codingAvgVal').innerHTML = `${sec.coding.average.toFixed(1)} <small>/ 20</small>`;
-  $('codingHighVal').innerHTML = `${sec.coding.highest} <small>/ 20</small>`;
-  $('codingAttemptedVal').textContent = `${sec.coding.attemptedCount} / ${aggregates.totalStudents}`;
-  $('codingAvgPctChip').textContent = `${sec.coding.avgPct}% Avg`;
-  $('codingAttemptRate').textContent = `${sec.coding.attemptRate}%`;
-  $('codingAttemptBar').style.width = `${sec.coding.attemptRate}%`;
+  const barClasses = ['success', 'primary', 'indigo', 'amber', 'rose'];
+
+  container.innerHTML = sections.map((sec, idx) => {
+    const stats = (aggregates.sectionStats && aggregates.sectionStats[sec.key]) || {
+      average: 0, highest: 0, attemptedCount: 0, avgPct: 0, attemptRate: 0
+    };
+    const barClass = barClasses[idx % barClasses.length];
+
+    return `
+      <div class="sec-card" id="cardSec_${escapeHtml(sec.key)}">
+        <div class="sec-card-header">
+          <div class="sec-info">
+            <span class="sec-badge">${sec.max} MARKS MAX</span>
+            <h3 class="sec-title">${escapeHtml(sec.name)}</h3>
+          </div>
+          <div class="sec-avg-chip">${stats.avgPct}% Avg</div>
+        </div>
+        <div class="sec-card-body">
+          <div class="sec-kpi-row">
+            <div class="sec-kpi">
+              <span class="sec-kpi-label">Average</span>
+              <span class="sec-kpi-val num">${stats.average.toFixed(1)} <small>/ ${sec.max}</small></span>
+            </div>
+            <div class="sec-kpi">
+              <span class="sec-kpi-label">Highest</span>
+              <span class="sec-kpi-val num">${stats.highest} <small>/ ${sec.max}</small></span>
+            </div>
+            <div class="sec-kpi">
+              <span class="sec-kpi-label">Attempted</span>
+              <span class="sec-kpi-val num">${stats.attemptedCount} <small>/ ${aggregates.totalStudents}</small></span>
+            </div>
+          </div>
+
+          <div class="sec-progress-wrap">
+            <div class="sec-progress-header">
+              <span>Attempt Rate</span>
+              <span class="num">${stats.attemptRate}%</span>
+            </div>
+            <div class="sec-progress-bar">
+              <div class="sec-progress-fill ${barClass}" style="width: ${stats.attemptRate}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 /**
  * Updates Combined Sheets Special Panel:
- * 1. Average of every section
+ * 1. Average of every detected section (dynamically updates when a class/section is selected)
  * 2. Top 10 and Below 10 persons separately
  */
-function updateCombinedAnalyticsPanel(allCombinedStudents) {
+function updateCombinedAnalyticsPanel(allCombinedStudents, selectedGroupName = null, displayDataset = null, displayAggregates = null) {
   const panel = $('combinedAnalyticsPanel');
   if (state.viewMode !== 'multiple' || allCombinedStudents.length === 0) {
     panel.style.display = 'none';
@@ -394,36 +483,131 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
   }
 
   panel.style.display = 'flex';
-  $('combinedSheetsTag').textContent = `${state.sheets.length} Sheets Combined`;
 
-  // 1. Calculate Combined Section Averages
-  const aggregates = computeDashboardAggregates(allCombinedStudents, state.threshold);
-  const sec = aggregates.sectionStats;
+  const activeSections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+  const hasGroup = !!selectedGroupName;
+  const targetStudents = (hasGroup && displayDataset) ? displayDataset : allCombinedStudents;
+  const aggregates = (hasGroup && displayAggregates)
+    ? displayAggregates
+    : computeDashboardAggregates(targetStudents, state.threshold, activeSections, totalMax);
 
-  // Verbal (10M)
-  $('combAvgVerbal').textContent = sec.verbal.average.toFixed(1);
-  $('combPctVerbal').textContent = `${sec.verbal.avgPct}% Average Score`;
-  $('combAttemptVerbal').textContent = `Attempt Rate: ${sec.verbal.attemptRate}% (${sec.verbal.attemptedCount} students)`;
+  const cleanSel = selectedGroupName ? selectedGroupName.replace(/2025-2029-Prime-/, '') : null;
 
-  // Java (20M)
-  $('combAvgJava').textContent = sec.java.average.toFixed(1);
-  $('combPctJava').textContent = `${sec.java.avgPct}% Average Score`;
-  $('combAttemptJava').textContent = `Attempt Rate: ${sec.java.attemptRate}% (${sec.java.attemptedCount} students)`;
+  // Header Tag and Titles update based on the selected class
+  const sheetsTag = $('combinedSheetsTag');
+  if (sheetsTag) {
+    sheetsTag.textContent = cleanSel
+      ? `${state.sheets.length} Sheets Combined · Section: ${cleanSel} (${targetStudents.length} students)`
+      : `${state.sheets.length} Sheets Combined (${allCombinedStudents.length} total students)`;
+  }
 
-  // Coding (20M)
-  $('combAvgCoding').textContent = sec.coding.average.toFixed(1);
-  $('combPctCoding').textContent = `${sec.coding.avgPct}% Average Score`;
-  $('combAttemptCoding').textContent = `Attempt Rate: ${sec.coding.attemptRate}% (${sec.coding.attemptedCount} students)`;
+  const combPanelTitle = $('combPanelTitle');
+  if (combPanelTitle) {
+    combPanelTitle.textContent = cleanSel
+      ? `Combined Section-Wise Averages — ${cleanSel}`
+      : 'Combined Section-Wise Averages';
+  }
 
-  // Total (50M)
-  $('combAvgTotal').textContent = aggregates.averageTotal.toFixed(1);
-  $('combPctTotal').textContent = `${((aggregates.averageTotal / TOTAL_MAX) * 100).toFixed(1)}% Combined Average`;
-  $('combPassRate').textContent = `Pass Rate: ${aggregates.passRate}% (${aggregates.passCount} passed)`;
+  const combPanelSub = $('combPanelSub');
+  if (combPanelSub) {
+    combPanelSub.textContent = cleanSel
+      ? `Calculated across all uploaded sheets for ${cleanSel} (${targetStudents.length} students)`
+      : 'Calculated across all uploaded sheets using attempted student scores';
+  }
 
-  // 2. Calculate Top 10 and Below 10 Persons
+  // 1. Render Combined Section Averages Grid dynamically
+  const combAvgGrid = $('combinedAvgGrid');
+  if (combAvgGrid) {
+    let html = activeSections.map(sec => {
+      const stats = (aggregates.sectionStats && aggregates.sectionStats[sec.key]) || {
+        average: 0, avgPct: 0, attemptRate: 0, attemptedCount: 0
+      };
+      const scopeLabel = cleanSel ? `${cleanSel} Average` : 'Average Score';
+      return `
+        <div class="comb-avg-box">
+          <span class="comb-avg-label">${escapeHtml(sec.name)} (${sec.max}M)</span>
+          <div class="comb-avg-num-wrap">
+            <span class="comb-avg-val num">${stats.average.toFixed(1)}</span>
+            <span class="comb-avg-max">/ ${sec.max}</span>
+          </div>
+          <div class="comb-avg-sub">${stats.avgPct}% ${escapeHtml(scopeLabel)}</div>
+          <div class="comb-attempt-rate">Attempt Rate: ${stats.attemptRate}% (${stats.attemptedCount} of ${targetStudents.length} students)</div>
+        </div>
+      `;
+    }).join('');
+
+    const totalScopeLabel = cleanSel ? `${cleanSel} Average Total` : 'Class Average Total';
+    html += `
+      <div class="comb-avg-box highlight">
+        <span class="comb-avg-label">${escapeHtml(totalScopeLabel)}</span>
+        <div class="comb-avg-num-wrap">
+          <span class="comb-avg-val num">${aggregates.averageTotal.toFixed(1)}</span>
+          <span class="comb-avg-max">/ ${totalMax}</span>
+        </div>
+        <div class="comb-avg-sub">${((aggregates.averageTotal / totalMax) * 100).toFixed(1)}% Combined Average</div>
+        <div class="comb-attempt-rate">Overall Pass Rate: ${aggregates.passRate}% (${aggregates.passCount} of ${targetStudents.length} passed)</div>
+      </div>
+    `;
+    combAvgGrid.innerHTML = html;
+  }
+
+  // 2. Render Top 10 and Lowest 10 Tables dynamically for the target students
+  renderRankingsTables(targetStudents, activeSections, totalMax, cleanSel);
+
+  // 3. Render Combined Charts
+  const sheetSummaries = state.sheets.map(sh => {
+    const shStudents = hasGroup
+      ? sh.students.filter(s => s.group === selectedGroupName)
+      : sh.students;
+    const agg = computeDashboardAggregates(shStudents.length > 0 ? shStudents : sh.students, state.threshold, sh.detectedSections, sh.totalMax);
+    return {
+      name: sh.name,
+      averageTotal: parseFloat(agg.averageTotal.toFixed(1)),
+      passRate: agg.passRate,
+      highestTotal: agg.highestTotal,
+      studentCount: shStudents.length > 0 ? shStudents.length : agg.totalStudents
+    };
+  });
+  charts.renderTestAveragesChart('chartTestAverages', sheetSummaries);
+  charts.renderCombinedSectionAvgChart('chartCombinedSectionAvg', aggregates);
+  charts.renderAttemptedVsNotAttemptedChart('chartAttemptedVsNot', aggregates);
+
+  const combGroupSub = $('combGroupPerfSub');
+  if (combGroupSub) {
+    combGroupSub.textContent = cleanSel
+      ? `All sections across batches • Highlighted: ${cleanSel} (click bar to filter)`
+      : 'All sections across batches • Click any bar to view section details';
+  }
+  // Benchmark chart displays all combined students across all batches so full comparison remains active
+  const sheetAggregates = computeDashboardAggregates(allCombinedStudents, state.threshold, activeSections, totalMax);
+  charts.renderCombinedGroupPerformance('chartCombinedGroupPerf', sheetAggregates, selectedGroupName, (grp) => {
+    handleGroupSelect(grp);
+  });
+}
+
+/**
+ * Dynamically renders Top 10 and Lowest 10 ranking tables
+ */
+function renderRankingsTables(allCombinedStudents, activeSections, totalMax, cleanSel = null) {
+  const top10Title = $('top10Title');
+  const top10Sub = $('top10Sub');
+  const below10Title = $('below10Title');
+  const below10Sub = $('below10Sub');
+
+  if (cleanSel) {
+    if (top10Title) top10Title.textContent = `${cleanSel} — Top Students`;
+    if (top10Sub) top10Sub.textContent = `Highest scores in ${cleanSel} across combined sheets`;
+    if (below10Title) below10Title.textContent = `${cleanSel} — Lowest Students`;
+    if (below10Sub) below10Sub.textContent = `Lowest scores in ${cleanSel} across combined sheets`;
+  } else {
+    if (top10Title) top10Title.textContent = 'Top 10 Students';
+    if (top10Sub) top10Sub.textContent = 'Highest total scores across all combined sheets';
+    if (below10Title) below10Title.textContent = 'Lowest 10 Students';
+    if (below10Sub) below10Sub.textContent = 'Students who need extra support or missed test sections';
+  }
   // Sort all students by totalScore descending
   const sortedDesc = [...allCombinedStudents].sort((a, b) => b.totalScore - a.totalScore);
-
   const top10 = sortedDesc.slice(0, 10);
   const topCount = top10.length;
   $('top10CountPill').textContent = `${topCount} Student${topCount > 1 ? 's' : ''}`;
@@ -434,6 +618,23 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
   const belowCount = below10.length;
   $('below10CountPill').textContent = `${belowCount} Student${belowCount > 1 ? 's' : ''}`;
 
+  // Table header generator
+  const theadHtml = `
+    <tr>
+      <th style="width: 52px;">Rank</th>
+      <th>Student</th>
+      <th>Group</th>
+      ${activeSections.map(sec => `<th style="text-align: right;">${escapeHtml(sec.name)}</th>`).join('')}
+      <th style="text-align: right;">Total</th>
+      <th>Source Sheet</th>
+    </tr>
+  `;
+
+  const topThead = $('top10Thead');
+  if (topThead) topThead.innerHTML = theadHtml;
+  const belowThead = $('below10Thead');
+  if (belowThead) belowThead.innerHTML = theadHtml;
+
   // Render Top 10 Table Rows
   const topTbody = $('top10TableBody');
   topTbody.innerHTML = top10.map((s, idx) => {
@@ -443,6 +644,11 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
     else if (rank === 2) rankBadgeClass = 'rank-2';
     else if (rank === 3) rankBadgeClass = 'rank-3';
 
+    const secCells = activeSections.map(sec => {
+      const cell = (s.sections && s.sections[sec.key]) || s[sec.key];
+      return `<td style="text-align:right;">${formatScoreCell(cell, sec.max)}</td>`;
+    }).join('');
+
     return `
       <tr class="clickable-row" data-id="${escapeHtml(s.id)}">
         <td><span class="rank-badge ${rankBadgeClass}">#${rank}</span></td>
@@ -450,11 +656,9 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
           <div style="font-weight:700;color:var(--ink-primary);">${escapeHtml(s.name)}</div>
           <div style="font-size:0.7rem;color:var(--ink-muted);" class="num">${escapeHtml(s.id)}</div>
         </td>
-        <td><span class="cell-group-badge">${escapeHtml(s.group)}</span></td>
-        <td style="text-align:right;">${formatScoreCell(s.verbal, 10)}</td>
-        <td style="text-align:right;">${formatScoreCell(s.java, 20)}</td>
-        <td style="text-align:right;">${formatScoreCell(s.coding, 20)}</td>
-        <td style="text-align:right;">${formatTotalCell(s)}</td>
+        <td><span class="cell-group-badge">${escapeHtml(s.group.replace(/2025-2029-Prime-/, ''))}</span></td>
+        ${secCells}
+        <td style="text-align:right;">${formatTotalCell(s, totalMax)}</td>
         <td><span class="source-sheet-badge">${escapeHtml(s.sourceSheet)}</span></td>
       </tr>
     `;
@@ -464,6 +668,10 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
   const belowTbody = $('below10TableBody');
   belowTbody.innerHTML = below10.map((s, idx) => {
     const bottomRank = sortedDesc.length - (belowCount - 1 - idx);
+    const secCells = activeSections.map(sec => {
+      const cell = (s.sections && s.sections[sec.key]) || s[sec.key];
+      return `<td style="text-align:right;">${formatScoreCell(cell, sec.max)}</td>`;
+    }).join('');
 
     return `
       <tr class="clickable-row" data-id="${escapeHtml(s.id)}">
@@ -472,17 +680,14 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
           <div style="font-weight:700;color:var(--ink-primary);">${escapeHtml(s.name)}</div>
           <div style="font-size:0.7rem;color:var(--ink-muted);" class="num">${escapeHtml(s.id)}</div>
         </td>
-        <td><span class="cell-group-badge">${escapeHtml(s.group)}</span></td>
-        <td style="text-align:right;">${formatScoreCell(s.verbal, 10)}</td>
-        <td style="text-align:right;">${formatScoreCell(s.java, 20)}</td>
-        <td style="text-align:right;">${formatScoreCell(s.coding, 20)}</td>
-        <td style="text-align:right;">${formatTotalCell(s)}</td>
+        <td><span class="cell-group-badge">${escapeHtml(s.group.replace(/2025-2029-Prime-/, ''))}</span></td>
+        ${secCells}
+        <td style="text-align:right;">${formatTotalCell(s, totalMax)}</td>
         <td><span class="source-sheet-badge">${escapeHtml(s.sourceSheet)}</span></td>
       </tr>
     `;
   }).join('');
 
-  // Attach click listeners to open student modal on row click
   topTbody.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => {
       const s = allCombinedStudents.find(x => x.id === tr.dataset.id);
@@ -496,29 +701,25 @@ function updateCombinedAnalyticsPanel(allCombinedStudents) {
       if (s) openStudentDetailModal(s);
     });
   });
+}
 
-  // Render Combined-Only Charts
-  // 1. Test Average Comparison (one bar per sheet)
-  const sheetSummaries = state.sheets.map(sh => {
-    const agg = computeDashboardAggregates(sh.students, state.threshold);
-    return {
-      name: sh.name,
-      averageTotal: parseFloat(agg.averageTotal.toFixed(1)),
-      passRate: agg.passRate,
-      highestTotal: agg.highestTotal,
-      studentCount: agg.totalStudents
-    };
-  });
-  charts.renderTestAveragesChart('chartTestAverages', sheetSummaries);
-
-  // 2. Combined Section Average Graph
-  charts.renderCombinedSectionAvgChart('chartCombinedSectionAvg', aggregates);
-
-  // 3. Attempted vs Not Attempted (section-level)
-  charts.renderAttemptedVsNotAttemptedChart('chartAttemptedVsNot', aggregates);
-
-  // 4. Group Performance Benchmark (combined)
-  charts.renderCombinedGroupPerformance('chartCombinedGroupPerf', aggregates);
+/**
+ * Handles selection or toggling of a specific class / section
+ */
+function handleGroupSelect(groupName) {
+  if (!groupName || groupName === '__ALL__') {
+    state.selectedGroups.clear();
+  } else {
+    // If the clicked group is already the active one, toggle it off back to All
+    if (state.selectedGroups.has(groupName) && state.selectedGroups.size === 1) {
+      state.selectedGroups.clear();
+    } else {
+      state.selectedGroups.clear();
+      state.selectedGroups.add(groupName);
+    }
+  }
+  state.currentPage = 1;
+  renderDashboard();
 }
 
 /**
@@ -531,16 +732,17 @@ function updateFilterControls(allStudentsInDataset) {
   let zeroCount = 0;
   let failCount = 0;
 
+  const sections = getActiveSections();
   const groupCounts = new Map();
 
   allStudentsInDataset.forEach(s => {
-    if (s.attemptedCount === 3) fullCount++;
+    if (s.attemptedCount === sections.length) fullCount++;
     if (s.unattemptedCount > 0) naCount++;
-    if (
-      (s.verbal.isAttempted && s.verbal.score === 0) ||
-      (s.java.isAttempted && s.java.score === 0) ||
-      (s.coding.isAttempted && s.coding.score === 0)
-    ) {
+    const hasZero = sections.some(sec => {
+      const c = (s.sections && s.sections[sec.key]) || s[sec.key];
+      return c && c.isAttempted && c.score === 0;
+    });
+    if (hasZero) {
       zeroCount++;
     }
     if (s.percentage < state.threshold) failCount++;
@@ -555,44 +757,57 @@ function updateFilterControls(allStudentsInDataset) {
   $('countTabZero').textContent = zeroCount;
   $('countTabFailed').textContent = failCount;
 
-  // Render Group Chips
-  const container = $('groupChipsContainer');
-  let chipsHtml = `
-    <button class="group-chip ${state.selectedGroups.size === 0 ? 'active' : ''}" data-group="__ALL__" type="button">
-      <span>All Groups</span>
-      <span class="group-chip-count">${total}</span>
-    </button>
-  `;
+  // Update Top Section Ribbon Status & Button
+  const topStatusText = $('topSectionStatusText');
+  const btnResetSection = $('btnResetSectionFilter');
+  if (state.selectedGroups.size > 0) {
+    const selName = Array.from(state.selectedGroups)[0];
+    const cleanName = selName.replace(/2025-2029-Prime-/, '');
+    const inSectionCount = allStudentsInDataset.filter(s => state.selectedGroups.has(s.group)).length;
+    if (topStatusText) {
+      topStatusText.innerHTML = `Viewing Section: <strong>${escapeHtml(cleanName)}</strong> (${inSectionCount} students)`;
+    }
+    if (btnResetSection) btnResetSection.style.display = 'inline-flex';
+  } else {
+    if (topStatusText) {
+      topStatusText.innerHTML = `Viewing: <strong>All Sections</strong> (${total} students)`;
+    }
+    if (btnResetSection) btnResetSection.style.display = 'none';
+  }
 
-  Array.from(groupCounts.entries()).sort((a, b) => b[1] - a[1]).forEach(([grp, count]) => {
-    const isSelected = state.selectedGroups.has(grp);
-    chipsHtml += `
-      <button class="group-chip ${isSelected ? 'active' : ''}" data-group="${escapeHtml(grp)}" type="button">
-        <span>${escapeHtml(grp.replace(/2025-2029-Prime-/, ''))}</span>
-        <span class="group-chip-count">${count}</span>
+  // Populate Group Chips in both top ribbon and table toolbar
+  const populateChips = (containerId) => {
+    const container = $(containerId);
+    if (!container) return;
+
+    let chipsHtml = `
+      <button class="group-chip ${state.selectedGroups.size === 0 ? 'active' : ''}" data-group="__ALL__" type="button">
+        <span>All Sections</span>
+        <span class="group-chip-count">${total}</span>
       </button>
     `;
-  });
 
-  container.innerHTML = chipsHtml;
-
-  // Attach group chip listeners
-  container.querySelectorAll('.group-chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const g = btn.dataset.group;
-      if (g === '__ALL__') {
-        state.selectedGroups.clear();
-      } else {
-        if (state.selectedGroups.has(g)) {
-          state.selectedGroups.delete(g);
-        } else {
-          state.selectedGroups.add(g);
-        }
-      }
-      state.currentPage = 1;
-      renderDashboard();
+    Array.from(groupCounts.entries()).sort((a, b) => b[1] - a[1]).forEach(([grp, count]) => {
+      const isSelected = state.selectedGroups.has(grp);
+      chipsHtml += `
+        <button class="group-chip ${isSelected ? 'active' : ''}" data-group="${escapeHtml(grp)}" type="button" title="View ${escapeHtml(grp.replace(/2025-2029-Prime-/, ''))} details">
+          <span>${escapeHtml(grp.replace(/2025-2029-Prime-/, ''))}</span>
+          <span class="group-chip-count">${count}</span>
+        </button>
+      `;
     });
-  });
+
+    container.innerHTML = chipsHtml;
+
+    container.querySelectorAll('.group-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        handleGroupSelect(btn.dataset.group);
+      });
+    });
+  };
+
+  populateChips('topGroupChipsContainer');
+  populateChips('groupChipsContainer');
 
   // Filter feedback row
   const feedbackRow = $('filterFeedbackRow');
@@ -600,7 +815,10 @@ function updateFilterControls(allStudentsInDataset) {
   const activeFilters = [];
 
   if (state.searchQuery) activeFilters.push(`Search: "${state.searchQuery}"`);
-  if (state.selectedGroups.size > 0) activeFilters.push(`Groups: ${Array.from(state.selectedGroups).join(', ')}`);
+  if (state.selectedGroups.size > 0) {
+    const cleanGroups = Array.from(state.selectedGroups).map(g => g.replace(/2025-2029-Prime-/, ''));
+    activeFilters.push(`Section: ${cleanGroups.join(', ')}`);
+  }
   if (state.statusFilter !== 'all') activeFilters.push(`Status: ${state.statusFilter.replace('_', ' ').toUpperCase()}`);
 
   if (activeFilters.length > 0) {
@@ -609,6 +827,49 @@ function updateFilterControls(allStudentsInDataset) {
   } else {
     feedbackRow.style.display = 'none';
   }
+}
+
+/**
+ * Renders the Student Results Table Headers dynamically based on detected sections
+ */
+function renderStudentTableHeaders(sections, totalMax) {
+  const thead = $('studentTableThead');
+  if (!thead) return;
+
+  const dynamicSectionHeaders = sections.map(sec => `
+    <th class="th-sortable th-score" data-sort="${sec.key}">${escapeHtml(sec.name)} (${sec.max}M) <span class="sort-icon">⇅</span></th>
+  `).join('');
+
+  thead.innerHTML = `
+    <tr>
+      <th class="th-sortable" data-sort="id">Member Id <span class="sort-icon">⇅</span></th>
+      <th class="th-sortable" data-sort="name">Student Name <span class="sort-icon">⇅</span></th>
+      <th class="th-sortable" data-sort="email">Email <span class="sort-icon">⇅</span></th>
+      <th class="th-sortable" data-sort="group">Group <span class="sort-icon">⇅</span></th>
+      ${dynamicSectionHeaders}
+      <th class="th-sortable th-score th-total" data-sort="totalScore">Total (${totalMax}M) <span class="sort-icon">⇅</span></th>
+      <th class="th-sortable" data-sort="attemptedCount">Attempt Status <span class="sort-icon">⇅</span></th>
+      <th class="th-sortable" data-sort="percentage">Result <span class="sort-icon">⇅</span></th>
+      <th class="th-source" id="thSourceFile" style="${state.viewMode === 'multiple' ? '' : 'display: none;'}">Source Sheet</th>
+      <th class="th-actions">Action</th>
+    </tr>
+  `;
+
+  // Attach sorting click listeners to newly rendered headers
+  thead.querySelectorAll('th.th-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (state.sortColumn === col) {
+        state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortColumn = col;
+        state.sortDirection = ['name', 'id', 'email', 'group'].includes(col) ? 'asc' : 'desc';
+      }
+      renderDashboard();
+    });
+  });
+
+  updateSortHeadersUI();
 }
 
 /**
@@ -621,6 +882,11 @@ function renderStudentTable(students) {
   const paginationControls = $('paginationControls');
 
   const total = students.length;
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+
+  // Render headers dynamically based on detected sections
+  renderStudentTableHeaders(sections, totalMax);
 
   if (total === 0) {
     tbody.innerHTML = '';
@@ -643,31 +909,34 @@ function renderStudentTable(students) {
 
   summaryText.textContent = `Showing ${startIdx + 1} to ${endIdx} of ${total} students`;
 
-  // Render Table Rows
+  // Render Table Rows dynamically
   tbody.innerHTML = pageStudents.map(s => {
     const isPass = s.percentage >= state.threshold;
     const resultPill = isPass
       ? `<span class="status-pill pass">Pass</span>`
       : `<span class="status-pill fail">Fail</span>`;
 
-    const attemptPill = s.attemptedCount === 3
-      ? `<span class="attempt-pill full" title="All 3 sections attempted">Full (3/3)</span>`
-      : `<span class="attempt-pill partial" title="${s.unattemptedCount} section(s) not attempted">Partial (${s.attemptedCount}/3)</span>`;
+    const attemptPill = s.attemptedCount === sections.length
+      ? `<span class="attempt-pill full" title="All ${sections.length} sections attempted">Full (${sections.length}/${sections.length})</span>`
+      : `<span class="attempt-pill partial" title="${s.unattemptedCount} section(s) not attempted">Partial (${s.attemptedCount}/${sections.length})</span>`;
 
     const sourceCell = state.viewMode === 'multiple'
       ? `<td><span class="source-sheet-badge">${escapeHtml(s.sourceSheet)}</span></td>`
       : '';
+
+    const dynamicScoreCells = sections.map(sec => {
+      const cell = (s.sections && s.sections[sec.key]) || s[sec.key];
+      return `<td class="score-cell">${formatScoreCell(cell, sec.max)}</td>`;
+    }).join('');
 
     return `
       <tr data-student-id="${escapeHtml(s.id)}" class="${s.isDuplicate ? 'row-duplicate' : ''}">
         <td class="cell-member-id num">${escapeHtml(s.id)}</td>
         <td class="cell-student-name">${escapeHtml(s.name)}</td>
         <td class="cell-email">${escapeHtml(s.email || '—')}</td>
-        <td><span class="cell-group-badge">${escapeHtml(s.group)}</span></td>
-        <td class="score-cell">${formatScoreCell(s.verbal, 10)}</td>
-        <td class="score-cell">${formatScoreCell(s.java, 20)}</td>
-        <td class="score-cell">${formatScoreCell(s.coding, 20)}</td>
-        <td class="score-cell">${formatTotalCell(s)}</td>
+        <td><span class="cell-group-badge">${escapeHtml(s.group.replace(/2025-2029-Prime-/, ''))}</span></td>
+        ${dynamicScoreCells}
+        <td class="score-cell">${formatTotalCell(s, totalMax)}</td>
         <td>${attemptPill}</td>
         <td>${resultPill}</td>
         ${sourceCell}
@@ -691,9 +960,6 @@ function renderStudentTable(students) {
 
   // Render Pagination Controls
   renderPagination(totalPages);
-
-  // Update Sorting Column Headers UI
-  updateSortHeadersUI();
 }
 
 /**
@@ -781,7 +1047,8 @@ function renderDashboard() {
     $('totalSheetsCount').textContent = '0';
     $('btnModeSingle').classList.add('active');
     $('btnModeMultiple').classList.remove('active');
-    $('validationBanner').style.display = 'none';
+    const vb = $('validationBanner');
+    if (vb) vb.style.display = 'none';
     return;
   }
 
@@ -791,10 +1058,26 @@ function renderDashboard() {
   updateHeaderAndContext();
 
   const activeDataset = getActiveDataset();
-  const aggregates = computeDashboardAggregates(activeDataset, state.threshold);
+  const activeSections = getActiveSections();
+  const activeTotalMax = getActiveTotalMax();
 
-  // Combined Section Averages & Top 10 / Below 10 Persons
-  updateCombinedAnalyticsPanel(activeDataset);
+  const hasGroupFilter = state.selectedGroups.size > 0;
+  const selectedGroupName = hasGroupFilter ? Array.from(state.selectedGroups)[0] : null;
+
+  // 1. Full sheet aggregates (used to display ALL sections present in sheet)
+  const sheetAggregates = computeDashboardAggregates(activeDataset, state.threshold, activeSections, activeTotalMax);
+
+  // 2. Specific class/section dataset & aggregates (when a section is chosen)
+  const displayDataset = hasGroupFilter
+    ? activeDataset.filter(s => state.selectedGroups.has(s.group))
+    : activeDataset;
+
+  const displayAggregates = hasGroupFilter
+    ? computeDashboardAggregates(displayDataset, state.threshold, activeSections, activeTotalMax)
+    : sheetAggregates;
+
+  // Combined Section Averages & Top 10 / Below 10 Persons - dynamically reflects selected class!
+  updateCombinedAnalyticsPanel(activeDataset, selectedGroupName, displayDataset, displayAggregates);
 
   // If switching away from combined mode, destroy combined-only charts
   if (state.viewMode !== 'multiple') {
@@ -804,14 +1087,50 @@ function renderDashboard() {
     charts.destroy('combinedSectionAvg');
   }
 
-  updateKPIsAndSections(aggregates);
+  // Update KPIs and Section Breakdown cards with specific section details
+  updateKPIsAndSections(displayAggregates, selectedGroupName);
   updateFilterControls(activeDataset);
 
-  // Render Charts
-  charts.renderScoreDistribution('chartScoreDistribution', aggregates);
-  charts.renderSectionPerformance('chartSectionPerformance', aggregates);
-  charts.renderGroupPerformance('chartGroupPerformance', aggregates);
-  charts.renderAttemptStatus('chartAttemptStatus', aggregates);
+  // Update chart subtitles for clarity
+  const cleanSel = selectedGroupName ? selectedGroupName.replace(/2025-2029-Prime-/, '') : null;
+  const scoreDistSub = $('scoreDistSub');
+  const secPerfSub = $('secPerfSub');
+  const attemptStatusSub = $('attemptStatusSub');
+  const groupPerfSub = $('groupPerfSub');
+
+  const secNamesStr = activeSections.map(s => s.name).join(', ');
+
+  if (scoreDistSub) {
+    scoreDistSub.textContent = cleanSel
+      ? `Score distribution for ${cleanSel} (${displayDataset.length} students)`
+      : `Student count by score range (/ ${activeTotalMax}M)`;
+  }
+  if (secPerfSub) {
+    secPerfSub.textContent = cleanSel
+      ? `Performance in ${secNamesStr} for ${cleanSel}`
+      : `Average score % across detected sections (${secNamesStr})`;
+  }
+  if (attemptStatusSub) {
+    attemptStatusSub.textContent = cleanSel
+      ? `Full vs partial attempts for ${cleanSel}`
+      : 'Full attempts vs partial test attempts';
+  }
+  if (groupPerfSub) {
+    groupPerfSub.textContent = cleanSel
+      ? `All ${sheetAggregates.totalGroups} sections in sheet • Highlighted: ${cleanSel} (click bar to filter)`
+      : `All ${sheetAggregates.totalGroups} sections present in sheet • Click any bar to view section details`;
+  }
+
+  // Render Charts:
+  // Detail charts reflect the selected section's specific details!
+  charts.renderScoreDistribution('chartScoreDistribution', displayAggregates);
+  charts.renderSectionPerformance('chartSectionPerformance', displayAggregates);
+  charts.renderAttemptStatus('chartAttemptStatus', displayAggregates);
+
+  // Benchmark chart shows ALL sections present in sheet, highlighting the selected section!
+  charts.renderGroupPerformance('chartGroupPerformance', sheetAggregates, selectedGroupName, (grp) => {
+    handleGroupSelect(grp);
+  });
 
   // Render Student Results Table
   const filteredStudents = getFilteredAndSortedStudents();
@@ -823,6 +1142,8 @@ function renderDashboard() {
  */
 function openStudentDetailModal(student) {
   state.currentModalStudent = student;
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
 
   $('studentDetailAvatar').textContent = student.name
     .split(' ')
@@ -843,47 +1164,52 @@ function openStudentDetailModal(student) {
   pill.className = `status-pill ${isPass ? 'pass' : 'fail'}`;
   pill.textContent = isPass ? 'Pass' : 'Fail';
 
-  $('studentModalTotal').innerHTML = `${student.totalScore} <small>/ 50M</small>`;
+  $('studentModalTotal').innerHTML = `${student.totalScore} <small>/ ${totalMax}M</small>`;
   $('studentModalPartialNote').textContent = student.isPartial
-    ? `* Partial Total (${student.unattemptedCount} section NA)`
+    ? `* Partial Total (${student.unattemptedCount} section(s) NA)`
     : 'Full test attempted';
 
   $('studentModalPct').textContent = `${student.percentage}%`;
 
-  // Rank calculation within current dataset
+  // Rank calculation within current student's specific class
   const dataset = getActiveDataset();
-  const sorted = [...dataset].sort((a, b) => b.totalScore - a.totalScore);
-  const rank = sorted.findIndex(s => s.id === student.id) + 1;
-  $('studentModalRank').textContent = `#${rank}`;
-  $('studentModalTotalStudents').textContent = `of ${dataset.length} students`;
+  const classStudents = dataset.filter(s => s.group === student.group);
+  const sortedInClass = [...classStudents].sort((a, b) => b.totalScore - a.totalScore);
+  const rankInClass = sortedInClass.findIndex(s => s.id === student.id) + 1;
+  const totalInClass = classStudents.length > 0 ? classStudents.length : dataset.length;
 
-  $('studentModalAttemptStatus').textContent = `${student.attemptedCount} / 3`;
+  $('studentModalRank').textContent = `#${rankInClass > 0 ? rankInClass : 1}`;
+  $('studentModalTotalStudents').textContent = `of ${totalInClass} in ${student.group}`;
+
+  $('studentModalAttemptStatus').textContent = `${student.attemptedCount} / ${sections.length}`;
   $('studentModalNaStatus').textContent = `${student.unattemptedCount} Unattempted`;
 
-  // Populate Section Table inside modal
+  // Populate Section Table inside modal dynamically based on detected sections
   const tbody = $('studentModalSecTableBody');
-  tbody.innerHTML = SECTION_CONFIG.map(sec => {
-    const c = student.sections[sec.key];
-    const isAtt = c.isAttempted && c.score !== null;
-    const scoreVal = isAtt ? c.score : 'NA';
-    const pct = isAtt ? ((c.score / sec.max) * 100).toFixed(0) + '%' : '—';
-    const statusPill = isAtt
-      ? (c.score === 0 ? '<span class="status-pill fail">Scored 0</span>' : '<span class="status-pill pass">Attempted</span>')
-      : '<span class="score-badge badge-na">Not Attempted</span>';
+  if (tbody) {
+    tbody.innerHTML = sections.map(sec => {
+      const c = (student.sections && student.sections[sec.key]) || student[sec.key] || { isAttempted: false, score: null };
+      const isAtt = c.isAttempted && c.score !== null;
+      const scoreVal = isAtt ? c.score : 'NA';
+      const pct = isAtt && sec.max > 0 ? ((c.score / sec.max) * 100).toFixed(0) + '%' : '—';
+      const statusPill = isAtt
+        ? (c.score === 0 ? '<span class="status-pill fail">Scored 0</span>' : '<span class="status-pill pass">Attempted</span>')
+        : '<span class="score-badge badge-na">Not Attempted</span>';
 
-    return `
-      <tr>
-        <td><strong>${escapeHtml(sec.name)}</strong></td>
-        <td class="num">${sec.max}M</td>
-        <td class="num"><strong>${scoreVal}</strong></td>
-        <td class="num">${pct}</td>
-        <td>${statusPill}</td>
-      </tr>
-    `;
-  }).join('');
+      return `
+        <tr>
+          <td><strong>${escapeHtml(sec.name)}</strong></td>
+          <td class="num">${sec.max}M</td>
+          <td class="num"><strong>${scoreVal}</strong></td>
+          <td class="num">${pct}</td>
+          <td>${statusPill}</td>
+        </tr>
+      `;
+    }).join('');
+  }
 
-  // Render Mini Modal Chart
-  charts.renderStudentModalChart('studentModalChartCanvas', student);
+  // Render Mini Modal Chart with detected sections
+  charts.renderStudentModalChart('studentModalChartCanvas', student, sections);
 
   $('modalStudentDetail').style.display = 'flex';
 }
@@ -899,6 +1225,9 @@ function closeStudentDetailModal() {
 function printIndividualStudentReport() {
   const s = state.currentModalStudent;
   if (!s) return;
+
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
 
   $('printStudentName').textContent = s.name;
   $('printStudentId').textContent = s.id;
@@ -918,7 +1247,7 @@ function printIndividualStudentReport() {
   $('printStudentKpis').innerHTML = `
     <div class="print-kpi-item">
       <div class="label">Total Score</div>
-      <div class="value num">${s.totalScore} / 50M ${s.isPartial ? '*' : ''}</div>
+      <div class="value num">${s.totalScore} / ${totalMax}M ${s.isPartial ? '*' : ''}</div>
     </div>
     <div class="print-kpi-item">
       <div class="label">Percentage</div>
@@ -926,11 +1255,11 @@ function printIndividualStudentReport() {
     </div>
     <div class="print-kpi-item">
       <div class="label">Class Rank</div>
-      <div class="value num">#${rank}</div>
+      <div class="value num">#${rank} of ${dataset.length}</div>
     </div>
     <div class="print-kpi-item">
       <div class="label">Result</div>
-      <div class="value" style="color: ${isPass ? '#10B981' : '#EF4444'}">${isPass ? 'PASS' : 'FAIL'}</div>
+      <div class="value" style="color: ${isPass ? '#059669' : '#B91C1C'}; font-weight: 700;">${isPass ? 'PASS' : 'FAIL'}</div>
     </div>
   `;
 
@@ -946,15 +1275,15 @@ function printIndividualStudentReport() {
       </tr>
     </thead>
     <tbody>
-      ${SECTION_CONFIG.map(sec => {
-        const c = s.sections[sec.key];
+      ${sections.map(sec => {
+        const c = (s.sections && s.sections[sec.key]) || s[sec.key] || { isAttempted: false, score: null };
         const isAtt = c.isAttempted && c.score !== null;
         return `
           <tr>
             <td><strong>${escapeHtml(sec.name)}</strong></td>
             <td class="num">${sec.max}</td>
             <td class="num"><strong>${isAtt ? c.score : 'NA'}</strong></td>
-            <td class="num">${isAtt ? ((c.score / sec.max) * 100).toFixed(1) + '%' : '—'}</td>
+            <td class="num">${isAtt && sec.max > 0 ? ((c.score / sec.max) * 100).toFixed(1) + '%' : '—'}</td>
             <td>${isAtt ? (c.score === 0 ? 'Zero Marks' : 'Attempted') : 'Not Attempted'}</td>
           </tr>
         `;
@@ -965,6 +1294,102 @@ function printIndividualStudentReport() {
   document.body.classList.add('printing-student');
   closeStudentDetailModal();
   window.print();
+}
+
+/**
+ * Downloads Individual Student Report Card as a PDF
+ */
+function handleDownloadStudentPdf() {
+  const s = state.currentModalStudent;
+  if (!s) return;
+
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+  const dataset = getActiveDataset();
+  const classStudents = dataset.filter(x => x.group === s.group);
+  const sortedInClass = [...classStudents].sort((a, b) => b.totalScore - a.totalScore);
+  const rankInClass = sortedInClass.findIndex(x => x.id === s.id) + 1;
+  const totalInClass = classStudents.length > 0 ? classStudents.length : dataset.length;
+
+  try {
+    const fileName = downloadIndividualStudentPdf(
+      s,
+      sections,
+      totalMax,
+      rankInClass > 0 ? rankInClass : 1,
+      totalInClass,
+      state.threshold
+    );
+    showToast(`Downloaded ${fileName}`);
+  } catch (err) {
+    console.error('Error downloading student PDF:', err);
+    showToast('Failed to download student PDF report.');
+  }
+}
+
+/**
+ * Exports class-wise progress report PDF based on active section filter or all classes
+ * @param {boolean} forceAllClasses - whether to force all classes even if an individual section is selected
+ */
+function handleExportClassWisePdf(forceAllClasses = false) {
+  if (state.sheets.length === 0) {
+    showToast('Please upload a spreadsheet first.');
+    return;
+  }
+
+  const activeDataset = getActiveDataset();
+  if (activeDataset.length === 0) {
+    showToast('No students to export.');
+    return;
+  }
+
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+  const agg = computeDashboardAggregates(activeDataset, state.threshold, sections, totalMax);
+
+  const hasGroupFilter = !forceAllClasses && state.selectedGroups.size > 0;
+  const selectedGroupName = hasGroupFilter ? Array.from(state.selectedGroups)[0] : null;
+
+  let targetGroupStats = agg.groupStats;
+  if (selectedGroupName) {
+    targetGroupStats = agg.groupStats.filter(g => g.name === selectedGroupName);
+  }
+
+  if (targetGroupStats.length === 0) {
+    showToast('No class data available to export.');
+    return;
+  }
+
+  const groupsData = targetGroupStats.map(g => {
+    const studentsInGrp = activeDataset.filter(s => s.group === g.name);
+    return {
+      groupName: g.name,
+      averageTotal: g.averageTotal,
+      highestTotal: g.highestTotal,
+      passRate: g.passRate,
+      students: studentsInGrp
+    };
+  });
+
+  const curSheet = state.sheets.find(s => s.id === state.activeSheetId);
+  const sheetTitle = state.viewMode === 'single'
+    ? (curSheet ? curSheet.name : 'Single Sheet')
+    : `Combined Sheets (${state.sheets.length})`;
+
+  try {
+    const fileName = downloadClassWiseProgressReportPdf({
+      groupsData,
+      sections,
+      totalMax,
+      threshold: state.threshold,
+      selectedGroupName: selectedGroupName,
+      sheetTitle
+    });
+    showToast(`PDF downloaded: ${fileName}`);
+  } catch (err) {
+    console.error('Class-wise PDF export error:', err);
+    showToast('Failed to generate PDF report.');
+  }
 }
 
 /**
@@ -1000,11 +1425,13 @@ async function processFiles(files) {
 
         if (rows.length > 0) {
           const headers = Object.keys(rows[0]);
-          const mapping = autoDetectMapping(headers);
+          const detectedSections = detectSectionsFromData(headers, rows);
+          const totalMax = detectTotalMax(headers, detectedSections, rows);
+          const mapping = autoDetectMapping(headers, detectedSections);
           const normalized = normalizeStudentRows(rows, mapping, {
             sheetName: workbook.SheetNames.length > 1 ? `${file.name.replace(/\.[^/.]+$/, '')} - ${sheetName}` : sheetName,
             fileName: file.name
-          });
+          }, detectedSections, totalMax);
 
           newSheets.push({
             id: `sheet-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -1012,6 +1439,8 @@ async function processFiles(files) {
             fileName: file.name,
             rawRows: rows,
             headers,
+            detectedSections,
+            totalMax,
             mapping,
             students: normalized.students,
             duplicateCount: normalized.duplicateCount,
@@ -1028,9 +1457,17 @@ async function processFiles(files) {
   if (newSheets.length > 0) {
     state.sheets = newSheets;
     state.activeSheetId = newSheets[0].id;
+    // Set to Single Sheet mode when 1 sheet is uploaded, Combined when multiple
+    state.viewMode = newSheets.length === 1 ? 'single' : 'multiple';
     state.currentPage = 1;
+    state.searchQuery = '';
     state.selectedGroups.clear();
-    showToast(`Imported ${newSheets.length} sheet(s) with ${getActiveDataset().length} total students!`);
+    state.statusFilter = 'all';
+
+    const count = getActiveDataset().length;
+    showToast(newSheets.length === 1
+      ? `Loaded ${newSheets[0].name} (${count} students)`
+      : `Loaded ${newSheets.length} sheets (${count} total students)`);
     renderDashboard();
   }
 }
@@ -1045,16 +1482,18 @@ function exportFilteredToExcel() {
     return;
   }
 
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+
   try {
+    const secHeaders = sections.map(s => `${s.name} (${s.max}M)`);
     const header = [
       'Member Id',
       'Name',
       'Email',
       'Groups',
-      'Verbal (10M)',
-      'Java MCQ\'s (20M)',
-      'Coding (20M)',
-      'Total (50M)',
+      ...secHeaders,
+      `Total (${totalMax}M)`,
       'Is Partial Total',
       'Attempted Count',
       'Percentage',
@@ -1062,21 +1501,26 @@ function exportFilteredToExcel() {
       'Source Sheet'
     ];
 
-    const rows = students.map(s => [
-      s.id,
-      s.name,
-      s.email,
-      s.group,
-      s.verbal.isAttempted ? s.verbal.score : 'NA',
-      s.java.isAttempted ? s.java.score : 'NA',
-      s.coding.isAttempted ? s.coding.score : 'NA',
-      s.totalScore,
-      s.isPartial ? 'YES' : 'NO',
-      `${s.attemptedCount}/3`,
-      `${s.percentage}%`,
-      s.percentage >= state.threshold ? 'Pass' : 'Fail',
-      s.sourceSheet
-    ]);
+    const rows = students.map(s => {
+      const secScores = sections.map(sec => {
+        const c = (s.sections && s.sections[sec.key]) || s[sec.key];
+        return c && c.isAttempted && c.score !== null ? c.score : 'NA';
+      });
+
+      return [
+        s.id,
+        s.name,
+        s.email,
+        s.group,
+        ...secScores,
+        s.totalScore,
+        s.isPartial ? 'YES' : 'NO',
+        `${s.attemptedCount}/${sections.length}`,
+        `${s.percentage}%`,
+        s.percentage >= state.threshold ? 'Pass' : 'Fail',
+        s.sourceSheet
+      ];
+    });
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     ws['!cols'] = [
@@ -1084,9 +1528,7 @@ function exportFilteredToExcel() {
       { wch: 28 },
       { wch: 26 },
       { wch: 24 },
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 14 },
+      ...sections.map(() => ({ wch: 16 })),
       { wch: 14 },
       { wch: 16 },
       { wch: 16 },
@@ -1100,13 +1542,13 @@ function exportFilteredToExcel() {
 
     // Summary sheet
     const activeDataset = getActiveDataset();
-    const agg = computeDashboardAggregates(activeDataset, state.threshold);
-    const summaryHeader = ['Group Name', 'Students', 'Average Total (/50M)', 'Pass Rate %', 'NA Count'];
+    const agg = computeDashboardAggregates(activeDataset, state.threshold, sections, totalMax);
+    const summaryHeader = ['Group Name', 'Students', `Average Total (/${totalMax}M)`, 'Pass Rate %', 'NA Count'];
     const summaryRows = agg.groupStats.map(g => [g.name, g.count, g.averageTotal, `${g.passRate}%`, g.naCount]);
     const summaryWs = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryRows]);
     XLSX.utils.book_append_sheet(wb, summaryWs, 'Group_Analytics_Summary');
 
-    const fileName = `CT_QISCET_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `Assessment_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
     showToast(`Excel file ${fileName} downloaded!`);
   } catch (err) {
@@ -1125,18 +1567,37 @@ function exportFilteredToCSV() {
     return;
   }
 
-  const header = ['Member Id,Name,Email,Groups,Verbal(10M),Java MCQs(20M),Coding(20M),Total(50M),Attempt Status,Percentage,Result,Source Sheet'];
+  const sections = getActiveSections();
+  const totalMax = getActiveTotalMax();
+
+  const secHeaders = sections.map(s => `"${s.name} (${s.max}M)"`);
+  const header = [
+    'Member Id',
+    'Name',
+    'Email',
+    'Groups',
+    ...secHeaders,
+    `"Total (${totalMax}M)"`,
+    'Attempt Status',
+    'Percentage',
+    'Result',
+    'Source Sheet'
+  ].join(',');
+
   const rows = students.map(s => {
+    const secScores = sections.map(sec => {
+      const c = (s.sections && s.sections[sec.key]) || s[sec.key];
+      return c && c.isAttempted && c.score !== null ? c.score : 'NA';
+    });
+
     return [
       `"${s.id}"`,
       `"${s.name.replace(/"/g, '""')}"`,
       `"${s.email}"`,
       `"${s.group}"`,
-      s.verbal.isAttempted ? s.verbal.score : 'NA',
-      s.java.isAttempted ? s.java.score : 'NA',
-      s.coding.isAttempted ? s.coding.score : 'NA',
+      ...secScores,
       s.totalScore,
-      s.isPartial ? `"Partial (${s.unattemptedCount} NA)"` : '"Full (3/3)"',
+      s.isPartial ? `"Partial (${s.unattemptedCount} NA)"` : `"Full (${s.attemptedCount}/${sections.length})"`,
       `"${s.percentage}%"`,
       s.percentage >= state.threshold ? '"Pass"' : '"Fail"',
       `"${s.sourceSheet}"`
@@ -1147,7 +1608,7 @@ function exportFilteredToCSV() {
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement('a');
   link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `CT_QISCET_Results_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute('download', `Assessment_Results_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -1240,6 +1701,14 @@ function setupEventListeners() {
     $('btnClearAllFilters').click();
   });
 
+  // Top Section Filter Reset
+  const btnResetSection = $('btnResetSectionFilter');
+  if (btnResetSection) {
+    btnResetSection.addEventListener('click', () => {
+      handleGroupSelect('__ALL__');
+    });
+  }
+
   // Table Sort Headers Click
   document.querySelectorAll('th.th-sortable').forEach(th => {
     th.addEventListener('click', () => {
@@ -1255,34 +1724,94 @@ function setupEventListeners() {
   });
 
   // Export Dropdown Toggle
+  const exportDropdownWrap = $('exportDropdownWrap');
   const btnExportMenu = $('btnExportMenu');
   const exportDropdown = $('exportDropdownMenu');
 
-  btnExportMenu.addEventListener('click', (e) => {
-    e.stopPropagation();
-    exportDropdown.classList.toggle('show');
-  });
+  function closeExportMenu() {
+    if (exportDropdownWrap) exportDropdownWrap.classList.remove('open');
+    if (exportDropdown) exportDropdown.classList.remove('show');
+  }
+
+  if (btnExportMenu) {
+    btnExportMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isCurrentlyOpen = exportDropdown && exportDropdown.classList.contains('show');
+      if (isCurrentlyOpen) {
+        closeExportMenu();
+      } else {
+        if (exportDropdownWrap) exportDropdownWrap.classList.add('open');
+        if (exportDropdown) exportDropdown.classList.add('show');
+      }
+    });
+  }
 
   document.addEventListener('click', (e) => {
-    if (!exportDropdown.contains(e.target) && e.target !== btnExportMenu) {
-      exportDropdown.classList.remove('show');
+    if (exportDropdownWrap && !exportDropdownWrap.contains(e.target)) {
+      closeExportMenu();
     }
   });
 
-  $('btnExportExcel').addEventListener('click', () => {
-    exportDropdown.classList.remove('show');
-    exportFilteredToExcel();
-  });
+  const btnExportPdf = $('btnExportPdf');
+  if (btnExportPdf) {
+    btnExportPdf.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeExportMenu();
+      handleExportClassWisePdf(false);
+    });
+  }
 
-  $('btnExportCsv').addEventListener('click', () => {
-    exportDropdown.classList.remove('show');
-    exportFilteredToCSV();
-  });
+  const btnExportAllClassesPdf = $('btnExportAllClassesPdf');
+  if (btnExportAllClassesPdf) {
+    btnExportAllClassesPdf.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeExportMenu();
+      handleExportClassWisePdf(true);
+    });
+  }
 
-  $('btnPrintDashboard').addEventListener('click', () => {
-    exportDropdown.classList.remove('show');
-    window.print();
-  });
+  const btnExportExcel = $('btnExportExcel');
+  if (btnExportExcel) {
+    btnExportExcel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeExportMenu();
+      exportFilteredToExcel();
+    });
+  }
+
+  const btnExportCsv = $('btnExportCsv');
+  if (btnExportCsv) {
+    btnExportCsv.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeExportMenu();
+      exportFilteredToCSV();
+    });
+  }
+
+  const btnPrintDashboard = $('btnPrintDashboard');
+  if (btnPrintDashboard) {
+    btnPrintDashboard.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeExportMenu();
+      window.print();
+    });
+  }
+
+  // Direct 1-Click Upload from Topbar
+  const topbarFileInput = $('topbarFileInput');
+  const btnOpenUpload = $('btnOpenUploadModal');
+  if (btnOpenUpload && topbarFileInput) {
+    btnOpenUpload.addEventListener('click', () => {
+      topbarFileInput.click();
+    });
+
+    topbarFileInput.addEventListener('change', async (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        await processFiles(Array.from(e.target.files));
+        topbarFileInput.value = ''; // reset so same file can be reloaded if edited
+      }
+    });
+  }
 
   // Upload Modal Handlers
   const uploadModal = $('modalUpload');
@@ -1291,14 +1820,6 @@ function setupEventListeners() {
   const fileItemsContainer = $('fileItemsContainer');
   const queuedCount = $('queuedFileCount');
   const btnProcessFiles = $('btnProcessUploadedFiles');
-
-  $('btnOpenUploadModal').addEventListener('click', () => {
-    state.queuedFiles = [];
-    fileItemsContainer.innerHTML = '';
-    $('uploadFileList').style.display = 'none';
-    btnProcessFiles.disabled = true;
-    uploadModal.style.display = 'flex';
-  });
 
   $('btnCloseUploadModal').addEventListener('click', () => uploadModal.style.display = 'none');
   $('btnCancelUpload').addEventListener('click', () => uploadModal.style.display = 'none');
@@ -1323,6 +1844,41 @@ function setupEventListeners() {
   fileInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files.length > 0) {
       handleQueuedFiles(Array.from(e.target.files));
+    }
+  });
+
+  // Global Full-Screen Drag & Drop: Drag any Excel/CSV file onto the browser window to load instantly
+  const dropOverlay = $('globalDropOverlay');
+  let dragCounter = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    // Only show for file drags
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      dragCounter++;
+      if (dropOverlay) dropOverlay.style.display = 'flex';
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      if (dropOverlay) dropOverlay.style.display = 'none';
+    }
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    if (dropOverlay) dropOverlay.style.display = 'none';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFiles(Array.from(e.dataTransfer.files));
     }
   });
 
@@ -1365,25 +1921,6 @@ function setupEventListeners() {
     });
   }
 
-  // Load Demonstration Data Button in Zero State (optional test utility)
-  const btnLoadDemo = $('btnLoadDemoData');
-  if (btnLoadDemo) {
-    btnLoadDemo.addEventListener('click', () => {
-      state.sheets = [
-        initializeSheet(SAMPLE_SHEET_1),
-        initializeSheet(SAMPLE_SHEET_2)
-      ];
-      state.activeSheetId = state.sheets[0].id;
-      state.viewMode = 'multiple'; // open combined view to show all requested features
-      state.searchQuery = '';
-      state.selectedGroups.clear();
-      state.statusFilter = 'all';
-      state.currentPage = 1;
-      showToast('Loaded demo datasets: Prime Batch 1 & Batch 2 combined!');
-      renderDashboard();
-    });
-  }
-
   function handleQueuedFiles(files) {
     state.queuedFiles = files;
     queuedCount.textContent = files.length;
@@ -1402,12 +1939,18 @@ function setupEventListeners() {
     await processFiles(state.queuedFiles);
   });
 
-  // Validation Banner close
-  $('btnCloseValidationBanner').addEventListener('click', () => $('validationBanner').style.display = 'none');
+  // Validation Banner close (if present)
+  const btnCloseVal = $('btnCloseValidationBanner');
+  if (btnCloseVal) btnCloseVal.addEventListener('click', () => {
+    const vb = $('validationBanner');
+    if (vb) vb.style.display = 'none';
+  });
 
   // Student Detail Modal
   $('btnCloseStudentModal').addEventListener('click', closeStudentDetailModal);
   $('btnCloseStudentModalBtn').addEventListener('click', closeStudentDetailModal);
+  const btnDownloadPdf = $('btnDownloadStudentPdf');
+  if (btnDownloadPdf) btnDownloadPdf.addEventListener('click', handleDownloadStudentPdf);
   $('btnPrintStudentReport').addEventListener('click', printIndividualStudentReport);
 }
 

@@ -1,29 +1,33 @@
-// Chart.js visualizations manager
+// Chart.js visualizations manager - Formal Academic Portal Theme
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
-// Chart design tokens
+// Academic Chart Design Tokens
 const COLORS = {
-  primary: '#2563EB',
+  navy: '#0B2144',
+  navyLight: '#16386E',
+  gold: '#C89326',
+  goldLight: '#E6B83B',
+  primary: '#1D4ED8',
   primaryLight: '#60A5FA',
-  primaryDark: '#1D4ED8',
-  indigo: '#4F46E5',
-  indigoLight: '#818CF8',
-  emerald: '#10B981',
-  emeraldLight: '#34D399',
-  amber: '#F59E0B',
-  amberLight: '#FBBF24',
-  rose: '#EF4444',
-  roseLight: '#F87171',
+  primaryDark: '#1E40AF',
+  indigo: '#4338CA',
+  indigoLight: '#6366F1',
+  emerald: '#059669',
+  emeraldLight: '#10B981',
+  amber: '#D97706',
+  amberLight: '#F59E0B',
+  crimson: '#B91C1C',
+  crimsonLight: '#DC2626',
   slate: '#64748B',
   slateLight: '#94A3B8',
-  border: '#E2E8F0',
-  grid: '#F1F5F9'
+  border: '#DCE3ED',
+  grid: '#EAEFF5'
 };
 
 const CHART_FONTS = {
-  family: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif"
+  family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
 };
 
 export class DashboardCharts {
@@ -67,24 +71,24 @@ export class DashboardCharts {
     this.instances.distribution = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['0 – 19 Marks', '20 – 29 Marks', '30 – 39 Marks', '40 – 50 Marks'],
+        labels: ['<20 Marks', '20–29 Marks', '30–39 Marks', '40–50 Marks'],
         datasets: [{
           label: 'Students',
           data,
           backgroundColor: [
-            'rgba(239, 68, 68, 0.85)',   // 0-19: Needs Attention (Rose)
-            'rgba(245, 158, 11, 0.85)',  // 20-29: Average (Amber)
-            'rgba(59, 130, 246, 0.85)',  // 30-39: Good (Blue)
-            'rgba(16, 185, 129, 0.85)'   // 40-50: Excellent (Emerald)
+            'rgba(185, 28, 28, 0.85)',   // <20: Red
+            'rgba(217, 119, 6, 0.85)',   // 20-29: Amber
+            'rgba(29, 78, 216, 0.85)',   // 30-39: Blue
+            'rgba(5, 150, 105, 0.85)'    // 40-50: Green
           ],
           borderColor: [
-            '#EF4444',
-            '#F59E0B',
-            '#3B82F6',
-            '#10B981'
+            '#B91C1C',
+            '#D97706',
+            '#1D4ED8',
+            '#059669'
           ],
           borderWidth: 1.5,
-          borderRadius: 8,
+          borderRadius: 6,
           borderSkipped: false
         }]
       },
@@ -94,7 +98,9 @@ export class DashboardCharts {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#0F172A',
+            backgroundColor: '#0B2144',
+            borderColor: '#C89326',
+            borderWidth: 1,
             padding: 12,
             titleFont: { family: CHART_FONTS.family, size: 13, weight: '600' },
             bodyFont: { family: CHART_FONTS.family, size: 12 },
@@ -113,14 +119,14 @@ export class DashboardCharts {
             ticks: {
               stepSize: 1,
               font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
+              color: '#475569'
             },
             grid: { color: COLORS.grid }
           },
           x: {
             ticks: {
-              font: { family: CHART_FONTS.family, size: 11, weight: '500' },
-              color: '#334155'
+              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
+              color: '#1E293B'
             },
             grid: { display: false }
           }
@@ -138,19 +144,24 @@ export class DashboardCharts {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const secStats = aggregates.sectionStats;
+    const secStats = aggregates.sectionStats || {};
+    const sections = aggregates.detectedSections && aggregates.detectedSections.length > 0
+      ? aggregates.detectedSections
+      : Object.keys(secStats).map(k => secStats[k]);
 
-    const labels = ['Verbal (10M)', 'Java MCQ\'s (20M)', 'Coding (20M)'];
-    const avgScores = [
-      secStats.verbal ? secStats.verbal.average : 0,
-      secStats.java ? secStats.java.average : 0,
-      secStats.coding ? secStats.coding.average : 0
-    ];
-    const avgPcts = [
-      secStats.verbal ? secStats.verbal.avgPct : 0,
-      secStats.java ? secStats.java.avgPct : 0,
-      secStats.coding ? secStats.coding.avgPct : 0
-    ];
+    if (sections.length === 0) return;
+
+    const labels = sections.map(s => s.label || `${s.name} (${s.max}M)`);
+    const avgScores = sections.map(s => {
+      const st = secStats[s.key];
+      return st ? st.average : 0;
+    });
+    const avgPcts = sections.map(s => {
+      const st = secStats[s.key];
+      return st ? st.avgPct : 0;
+    });
+    const maxMarks = sections.map(s => s.max || 20);
+    const yMax = Math.max(...maxMarks, 20);
 
     this.instances.sections = new Chart(ctx, {
       type: 'bar',
@@ -158,10 +169,10 @@ export class DashboardCharts {
         labels,
         datasets: [
           {
-            label: 'Average Score Obtained',
+            label: 'Average Score',
             data: avgScores,
-            backgroundColor: 'rgba(37, 99, 235, 0.85)',
-            borderColor: '#2563EB',
+            backgroundColor: 'rgba(16, 44, 87, 0.85)',
+            borderColor: '#0B2144',
             borderWidth: 1.5,
             borderRadius: 6
           }
@@ -174,6 +185,8 @@ export class DashboardCharts {
           legend: { display: false },
           tooltip: {
             backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
             padding: 12,
             titleFont: { family: CHART_FONTS.family, size: 13, weight: '600' },
             bodyFont: { family: CHART_FONTS.family, size: 12 },
@@ -181,9 +194,9 @@ export class DashboardCharts {
               label: (context) => {
                 const idx = context.dataIndex;
                 const score = context.parsed.y;
-                const max = idx === 0 ? 10 : 20;
+                const max = maxMarks[idx];
                 const pct = avgPcts[idx];
-                return ` Avg: ${score} / ${max} (${pct}%)`;
+                return ` Average: ${score} / ${max} (${pct}%)`;
               }
             }
           }
@@ -191,18 +204,18 @@ export class DashboardCharts {
         scales: {
           y: {
             beginAtZero: true,
-            max: 20,
+            max: yMax,
             ticks: {
-              stepSize: 5,
+              stepSize: yMax > 50 ? 20 : yMax > 20 ? 10 : 5,
               font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
+              color: '#475569'
             },
             grid: { color: COLORS.grid }
           },
           x: {
             ticks: {
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#334155'
+              color: '#1E293B'
             },
             grid: { display: false }
           }
@@ -220,19 +233,22 @@ export class DashboardCharts {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const secStats = aggregates.sectionStats;
+    const secStats = aggregates.sectionStats || {};
+    const sections = aggregates.detectedSections && aggregates.detectedSections.length > 0
+      ? aggregates.detectedSections
+      : Object.keys(secStats).map(k => secStats[k]);
 
-    const labels = ['Verbal (10M)', 'Java MCQ\'s (20M)', 'Coding (20M)'];
-    const attempted = [
-      secStats.verbal ? secStats.verbal.attemptedCount : 0,
-      secStats.java ? secStats.java.attemptedCount : 0,
-      secStats.coding ? secStats.coding.attemptedCount : 0
-    ];
-    const notAttempted = [
-      secStats.verbal ? secStats.verbal.unattemptedCount : 0,
-      secStats.java ? secStats.java.unattemptedCount : 0,
-      secStats.coding ? secStats.coding.unattemptedCount : 0
-    ];
+    if (sections.length === 0) return;
+
+    const labels = sections.map(s => s.label || `${s.name} (${s.max}M)`);
+    const attempted = sections.map(s => {
+      const st = secStats[s.key];
+      return st ? st.attemptedCount : 0;
+    });
+    const notAttempted = sections.map(s => {
+      const st = secStats[s.key];
+      return st ? st.unattemptedCount : 0;
+    });
 
     this.instances.attemptedVsNot = new Chart(ctx, {
       type: 'bar',
@@ -240,18 +256,18 @@ export class DashboardCharts {
         labels,
         datasets: [
           {
-            label: 'Attempted Students',
+            label: 'Candidates Evaluated',
             data: attempted,
-            backgroundColor: 'rgba(16, 185, 129, 0.85)',
-            borderColor: '#10B981',
+            backgroundColor: 'rgba(5, 150, 105, 0.85)',
+            borderColor: '#059669',
             borderWidth: 1.5,
             borderRadius: 6
           },
           {
-            label: 'Not Attempted (NA)',
+            label: 'Module Absentee (NA)',
             data: notAttempted,
-            backgroundColor: 'rgba(245, 158, 11, 0.85)',
-            borderColor: '#F59E0B',
+            backgroundColor: 'rgba(100, 116, 139, 0.8)',
+            borderColor: '#64748B',
             borderWidth: 1.5,
             borderRadius: 6
           }
@@ -267,14 +283,16 @@ export class DashboardCharts {
               boxWidth: 12,
               boxHeight: 12,
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#475569'
+              color: '#334155'
             }
           },
           tooltip: {
             backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
             padding: 12,
             callbacks: {
-              label: (context) => ` ${context.dataset.label}: ${context.parsed.y} students`
+              label: (context) => ` ${context.dataset.label}: ${context.parsed.y} candidates`
             }
           }
         },
@@ -282,16 +300,15 @@ export class DashboardCharts {
           y: {
             beginAtZero: true,
             ticks: {
-              stepSize: 2,
               font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
+              color: '#475569'
             },
             grid: { color: COLORS.grid }
           },
           x: {
             ticks: {
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#334155'
+              color: '#1E293B'
             },
             grid: { display: false }
           }
@@ -301,7 +318,7 @@ export class DashboardCharts {
   }
 
   /**
-   * Render Attempt Status Breakdown (Doughnut: Full vs Partial)
+   * Render Attempt Status Breakdown (Doughnut: Full vs Partial) - Normal Instant Render
    */
   renderAttemptStatus(canvasId, aggregates) {
     this.destroy('attempts');
@@ -310,28 +327,29 @@ export class DashboardCharts {
 
     const ctx = canvas.getContext('2d');
     const total = aggregates.totalStudents || 1;
-    // Count full attempts vs partial (has at least 1 NA)
     const fullAttemptCount = total - aggregates.studentsWithNA;
     const partialCount = aggregates.studentsWithNA;
+    const secCount = (aggregates.detectedSections && aggregates.detectedSections.length) || 3;
 
     this.instances.attempts = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Full Attempt (3/3)', 'Has Unattempted (NA)'],
+        labels: [`Full Assessment (${secCount}/${secCount} Sections)`, 'Partial Assessment (≥1 NA)'],
         datasets: [{
           data: [fullAttemptCount, partialCount],
           backgroundColor: [
-            'rgba(16, 185, 129, 0.85)',
-            'rgba(245, 158, 11, 0.85)'
+            '#059669',
+            '#64748B'
           ],
-          borderColor: ['#10B981', '#F59E0B'],
-          borderWidth: 2,
-          hoverOffset: 6
+          borderColor: ['#059669', '#64748B'],
+          borderWidth: 1,
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false, // Animation disabled - normal instant rendering
         cutout: '62%',
         plugins: {
           legend: {
@@ -340,18 +358,20 @@ export class DashboardCharts {
               boxWidth: 12,
               boxHeight: 12,
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#475569',
-              padding: 12
+              color: '#334155',
+              padding: 14
             }
           },
           tooltip: {
             backgroundColor: '#0F172A',
-            padding: 12,
+            borderColor: '#E2E8F0',
+            borderWidth: 1,
+            padding: 10,
             callbacks: {
               label: (context) => {
                 const count = context.parsed;
                 const pct = ((count / total) * 100).toFixed(1);
-                return ` ${context.label}: ${count} students (${pct}%)`;
+                return ` ${context.label}: ${count} candidates (${pct}%)`;
               }
             }
           }
@@ -362,17 +382,52 @@ export class DashboardCharts {
 
   /**
    * Render Group Performance Benchmark (Horizontal Bar)
-   * Average total score across departments and section
+   * Shows ALL sections present in the sheet. Highlights selected section if one is chosen.
    */
-  renderGroupPerformance(canvasId, aggregates) {
+  renderGroupPerformance(canvasId, aggregates, selectedGroup = null, onSelectGroup = null) {
     this.destroy('groups');
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const groupStats = aggregates.groupStats.slice(0, 10);
+    // Show ALL sections present in the sheet
+    const groupStats = aggregates.groupStats || [];
+    if (groupStats.length === 0) return;
+
+    // Dynamically expand container height so all sections are comfortably readable
+    if (canvas.parentElement) {
+      const dynamicHeight = Math.max(220, Math.min(640, groupStats.length * 36));
+      canvas.parentElement.style.height = `${dynamicHeight}px`;
+    }
+
     const labels = groupStats.map(g => g.name.replace(/2025-2029-Prime-/, ''));
     const averages = groupStats.map(g => g.averageTotal);
+
+    const normSelected = selectedGroup ? selectedGroup.replace(/2025-2029-Prime-/, '').trim() : null;
+
+    const backgroundColors = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      if (!normSelected) {
+        return 'rgba(37, 99, 235, 0.85)'; // Default blue
+      }
+      return isSel ? 'rgba(15, 23, 42, 0.95)' : 'rgba(148, 163, 184, 0.35)';
+    });
+
+    const borderColors = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      if (!normSelected) {
+        return '#2563EB';
+      }
+      return isSel ? '#0F172A' : '#CBD5E1';
+    });
+
+    const borderWidths = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      return isSel ? 2 : 1;
+    });
 
     this.instances.groups = new Chart(ctx, {
       type: 'bar',
@@ -380,11 +435,11 @@ export class DashboardCharts {
         labels,
         datasets: [
           {
-            label: 'Avg Total Score (/50)',
+            label: 'Average Score (/50)',
             data: averages,
-            backgroundColor: 'rgba(79, 70, 229, 0.85)',
-            borderColor: '#4F46E5',
-            borderWidth: 1.5,
+            backgroundColor: backgroundColors,
+            borderColor: borderColors,
+            borderWidth: borderWidths,
             borderRadius: 6
           }
         ]
@@ -393,18 +448,38 @@ export class DashboardCharts {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements.length > 0 && typeof onSelectGroup === 'function') {
+            const idx = elements[0].index;
+            const clickedGroup = groupStats[idx].name;
+            onSelectGroup(clickedGroup);
+          }
+        },
+        onHover: (event, elements) => {
+          if (event.native && event.native.target) {
+            event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+          }
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
             padding: 12,
             titleFont: { family: CHART_FONTS.family, size: 12.5, weight: '600' },
             bodyFont: { family: CHART_FONTS.family, size: 12 },
             callbacks: {
+              title: (items) => {
+                const g = groupStats[items[0].dataIndex];
+                const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+                const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+                return isSel ? `${clean}  (Selected Section)` : clean;
+              },
               label: (context) => ` Average Total: ${context.parsed.x} / 50M`,
               afterLabel: (context) => {
                 const g = groupStats[context.dataIndex];
-                return `Students: ${g.count} | Pass Rate: ${g.passRate}% | NA Count: ${g.naCount}`;
+                return `Students: ${g.count} | Pass Rate: ${g.passRate}% | NA: ${g.naCount}\n(Click bar to view section details)`;
               }
             }
           }
@@ -416,14 +491,14 @@ export class DashboardCharts {
             ticks: {
               stepSize: 10,
               font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
+              color: '#475569'
             },
             grid: { color: COLORS.grid }
           },
           y: {
             ticks: {
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#1E293B'
+              color: '#0F172A'
             },
             grid: { display: false }
           }
@@ -441,9 +516,8 @@ export class DashboardCharts {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const labels = sheetSummaries.map((s, idx) => `Test ${idx + 1}: ${s.name.slice(0, 14)}`);
+    const labels = sheetSummaries.map((s, idx) => `Batch ${idx + 1}: ${s.name.slice(0, 14)}`);
     const averages = sheetSummaries.map(s => s.averageTotal);
-    const passRates = sheetSummaries.map(s => s.passRate);
 
     this.instances.testAverages = new Chart(ctx, {
       type: 'bar',
@@ -451,10 +525,10 @@ export class DashboardCharts {
         labels,
         datasets: [
           {
-            label: 'Test Average (/50M)',
+            label: 'Batch Mean (/50M)',
             data: averages,
-            backgroundColor: 'rgba(37, 99, 235, 0.85)',
-            borderColor: '#2563EB',
+            backgroundColor: 'rgba(11, 33, 68, 0.85)',
+            borderColor: '#0B2144',
             borderWidth: 1.5,
             borderRadius: 6
           }
@@ -466,16 +540,18 @@ export class DashboardCharts {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#0F172A',
+            backgroundColor: '#0B2144',
+            borderColor: '#C89326',
+            borderWidth: 1,
             padding: 12,
             callbacks: {
               label: (context) => {
                 const s = sheetSummaries[context.dataIndex];
-                return ` Test Avg: ${s.averageTotal} / 50M (${s.studentCount} students)`;
+                return ` Batch Mean: ${s.averageTotal} / 50M (${s.studentCount} candidates)`;
               },
               afterLabel: (context) => {
                 const s = sheetSummaries[context.dataIndex];
-                return `Pass Rate: ${s.passRate}% | Top Score: ${s.highestTotal}`;
+                return `Pass Rate: ${s.passRate}% | Top Mark: ${s.highestTotal}`;
               }
             }
           }
@@ -487,162 +563,11 @@ export class DashboardCharts {
             ticks: {
               stepSize: 10,
               font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
+              color: '#475569'
             },
             grid: { color: COLORS.grid }
           },
           x: {
-            ticks: {
-              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#334155'
-            },
-            grid: { display: false }
-          }
-        }
-      }
-    });
-  }
-
-  /**
-   * Render Combined Section Average Chart (Bar)
-   * Shows verbal / java / coding averages across all sheets combined
-   */
-  renderCombinedSectionAvgChart(canvasId, aggregates) {
-    this.destroy('combinedSectionAvg');
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const sec = aggregates.sectionStats;
-
-    const labels = ["Verbal (10M)", "Java MCQ's (20M)", "Coding (20M)"];
-    const avgScores = [
-      sec.verbal ? sec.verbal.average : 0,
-      sec.java ? sec.java.average : 0,
-      sec.coding ? sec.coding.average : 0
-    ];
-    const maxes = [10, 20, 20];
-
-    this.instances.combinedSectionAvg = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Avg Score',
-            data: avgScores,
-            backgroundColor: [
-              'rgba(79, 70, 229, 0.85)',
-              'rgba(37, 99, 235, 0.85)',
-              'rgba(16, 185, 129, 0.85)'
-            ],
-            borderColor: ['#4F46E5', '#2563EB', '#10B981'],
-            borderWidth: 1.5,
-            borderRadius: 8
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0F172A',
-            padding: 12,
-            callbacks: {
-              label: (ctx) => {
-                const idx = ctx.dataIndex;
-                const score = ctx.parsed.y;
-                const max = maxes[idx];
-                const pct = ((score / max) * 100).toFixed(0);
-                return ` Avg: ${score.toFixed(1)} / ${max} (${pct}%)`;
-              }
-            }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            max: 20,
-            ticks: {
-              stepSize: 5,
-              font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
-            },
-            grid: { color: COLORS.grid }
-          },
-          x: {
-            ticks: {
-              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#334155'
-            },
-            grid: { display: false }
-          }
-        }
-      }
-    });
-  }
-
-  /**
-   * Render Combined Group Performance Benchmark
-   * Used in combined sheets view with separate instance key
-   */
-  renderCombinedGroupPerformance(canvasId, aggregates) {
-    this.destroy('combinedGroupPerf');
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const groupStats = aggregates.groupStats.slice(0, 12);
-    const labels = groupStats.map(g => g.name.replace(/2025-2029-Prime-/, ''));
-    const averages = groupStats.map(g => g.averageTotal);
-
-    this.instances.combinedGroupPerf = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Avg Total Score (/50)',
-            data: averages,
-            backgroundColor: 'rgba(245, 158, 11, 0.85)',
-            borderColor: '#F59E0B',
-            borderWidth: 1.5,
-            borderRadius: 6
-          }
-        ]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0F172A',
-            padding: 12,
-            callbacks: {
-              label: (context) => ` Average Total: ${context.parsed.x} / 50M`,
-              afterLabel: (context) => {
-                const g = groupStats[context.dataIndex];
-                return `Students: ${g.count} | Pass Rate: ${g.passRate}% | NA: ${g.naCount}`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            beginAtZero: true,
-            max: 50,
-            ticks: {
-              stepSize: 10,
-              font: { family: CHART_FONTS.family, size: 11 },
-              color: '#64748B'
-            },
-            grid: { color: COLORS.grid }
-          },
-          y: {
             ticks: {
               font: { family: CHART_FONTS.family, size: 11, weight: '600' },
               color: '#1E293B'
@@ -655,33 +580,269 @@ export class DashboardCharts {
   }
 
   /**
+   * Render Combined Section Average Chart (Bar)
+   */
+  renderCombinedSectionAvgChart(canvasId, aggregates) {
+    this.destroy('combinedSectionAvg');
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const secStats = aggregates.sectionStats || {};
+    const sections = aggregates.detectedSections && aggregates.detectedSections.length > 0
+      ? aggregates.detectedSections
+      : Object.keys(secStats).map(k => secStats[k]);
+
+    if (sections.length === 0) return;
+
+    const labels = sections.map(s => s.label || `${s.name} (${s.max}M)`);
+    const avgScores = sections.map(s => {
+      const st = secStats[s.key];
+      return st ? st.average : 0;
+    });
+    const maxMarks = sections.map(s => s.max || 20);
+    const yMax = Math.max(...maxMarks, 20);
+
+    const palette = [
+      'rgba(67, 56, 202, 0.85)',
+      'rgba(29, 78, 216, 0.85)',
+      'rgba(5, 150, 105, 0.85)',
+      'rgba(202, 138, 4, 0.85)',
+      'rgba(225, 29, 72, 0.85)'
+    ];
+    const borderPalette = ['#4338CA', '#1D4ED8', '#059669', '#CA8A04', '#E11D48'];
+
+    const bgColors = sections.map((_, i) => palette[i % palette.length]);
+    const borderColors = sections.map((_, i) => borderPalette[i % borderPalette.length]);
+
+    this.instances.combinedSectionAvg = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Consolidated Mean Score',
+            data: avgScores,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
+            borderWidth: 1.5,
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
+            padding: 12,
+            callbacks: {
+              label: (ctx) => {
+                const idx = ctx.dataIndex;
+                const score = ctx.parsed.y;
+                const max = maxMarks[idx];
+                const pct = max > 0 ? ((score / max) * 100).toFixed(0) : 0;
+                return ` Mean: ${score.toFixed(1)} / ${max} (${pct}%)`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: yMax,
+            ticks: {
+              stepSize: yMax > 50 ? 20 : yMax > 20 ? 10 : 5,
+              font: { family: CHART_FONTS.family, size: 11 },
+              color: '#475569'
+            },
+            grid: { color: COLORS.grid }
+          },
+          x: {
+            ticks: {
+              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
+              color: '#1E293B'
+            },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Render Combined Group Performance Benchmark
+   */
+  renderCombinedGroupPerformance(canvasId, aggregates, selectedGroup = null, onSelectGroup = null) {
+    this.destroy('combinedGroupPerf');
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const groupStats = aggregates.groupStats || [];
+    if (groupStats.length === 0) return;
+
+    if (canvas.parentElement) {
+      const dynamicHeight = Math.max(220, Math.min(640, groupStats.length * 36));
+      canvas.parentElement.style.height = `${dynamicHeight}px`;
+    }
+
+    const labels = groupStats.map(g => g.name.replace(/2025-2029-Prime-/, ''));
+    const averages = groupStats.map(g => g.averageTotal);
+
+    const normSelected = selectedGroup ? selectedGroup.replace(/2025-2029-Prime-/, '').trim() : null;
+
+    const backgroundColors = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      if (!normSelected) {
+        return 'rgba(200, 147, 38, 0.85)';
+      }
+      return isSel ? 'rgba(15, 23, 42, 0.95)' : 'rgba(148, 163, 184, 0.35)';
+    });
+
+    const borderColors = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      if (!normSelected) {
+        return '#C89326';
+      }
+      return isSel ? '#0F172A' : '#CBD5E1';
+    });
+
+    const borderWidths = groupStats.map(g => {
+      const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+      const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+      return isSel ? 2 : 1;
+    });
+
+    this.instances.combinedGroupPerf = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Average Score (/50)',
+            data: averages,
+            backgroundColor: backgroundColors,
+            borderColor: borderColors,
+            borderWidth: borderWidths,
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements.length > 0 && typeof onSelectGroup === 'function') {
+            const idx = elements[0].index;
+            const clickedGroup = groupStats[idx].name;
+            onSelectGroup(clickedGroup);
+          }
+        },
+        onHover: (event, elements) => {
+          if (event.native && event.native.target) {
+            event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
+            padding: 12,
+            titleFont: { family: CHART_FONTS.family, size: 12.5, weight: '600' },
+            bodyFont: { family: CHART_FONTS.family, size: 12 },
+            callbacks: {
+              title: (items) => {
+                const g = groupStats[items[0].dataIndex];
+                const clean = g.name.replace(/2025-2029-Prime-/, '').trim();
+                const isSel = normSelected && (clean === normSelected || g.name === selectedGroup);
+                return isSel ? `${clean}  (Selected Section)` : clean;
+              },
+              label: (context) => ` Average Total: ${context.parsed.x} / 50M`,
+              afterLabel: (context) => {
+                const g = groupStats[context.dataIndex];
+                return `Students: ${g.count} | Pass Rate: ${g.passRate}% | NA: ${g.naCount}\n(Click bar to view section details)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 50,
+            ticks: {
+              stepSize: 10,
+              font: { family: CHART_FONTS.family, size: 11 },
+              color: '#475569'
+            },
+            grid: { color: COLORS.grid }
+          },
+          y: {
+            ticks: {
+              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
+              color: '#0F172A'
+            },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  /**
    * Render Individual Student's Score Breakdown Chart inside Modal
    */
-  renderStudentModalChart(canvasId, student) {
+  renderStudentModalChart(canvasId, student, detectedSections = null) {
     this.destroy('studentModal');
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const labels = ['Verbal (10M)', 'Java MCQ\'s (20M)', 'Coding (20M)'];
-    const maxes = [10, 20, 20];
-    const scores = [
-      student.verbal.isAttempted ? student.verbal.score : 0,
-      student.java.isAttempted ? student.java.score : 0,
-      student.coding.isAttempted ? student.coding.score : 0
-    ];
+    const sections = detectedSections && detectedSections.length > 0
+      ? detectedSections
+      : Object.keys(student.sections || {}).map(k => ({
+          key: k,
+          name: k.charAt(0).toUpperCase() + k.slice(1),
+          max: 20
+        }));
 
-    const backgroundColors = [
-      !student.verbal.isAttempted ? '#F1F5F9' : student.verbal.score >= 7.5 ? '#10B981' : student.verbal.score >= 4 ? '#3B82F6' : '#EF4444',
-      !student.java.isAttempted ? '#F1F5F9' : student.java.score >= 15 ? '#10B981' : student.java.score >= 8 ? '#3B82F6' : '#EF4444',
-      !student.coding.isAttempted ? '#F1F5F9' : student.coding.score >= 15 ? '#10B981' : student.coding.score >= 8 ? '#3B82F6' : '#EF4444'
-    ];
+    const labels = sections.map(s => s.label || `${s.name} (${s.max}M)`);
+    const maxMarks = sections.map(s => s.max || 20);
+    const yMax = Math.max(...maxMarks, 20);
 
-    const borderColors = [
-      !student.verbal.isAttempted ? '#CBD5E1' : student.verbal.score >= 7.5 ? '#059669' : student.verbal.score >= 4 ? '#2563EB' : '#DC2626',
-      !student.java.isAttempted ? '#CBD5E1' : student.java.score >= 15 ? '#059669' : student.java.score >= 8 ? '#2563EB' : '#DC2626',
-      !student.coding.isAttempted ? '#CBD5E1' : student.coding.score >= 15 ? '#059669' : student.coding.score >= 8 ? '#2563EB' : '#DC2626'
-    ];
+    const scores = [];
+    const backgroundColors = [];
+    const borderColors = [];
+
+    sections.forEach(sec => {
+      const cell = (student.sections && student.sections[sec.key]) || student[sec.key] || { isAttempted: false, score: 0 };
+      const score = cell.isAttempted && cell.score !== null ? cell.score : 0;
+      scores.push(score);
+
+      const pct = sec.max > 0 ? (score / sec.max) * 100 : 0;
+      if (!cell.isAttempted) {
+        backgroundColors.push('#E2E8F0');
+        borderColors.push('#94A3B8');
+      } else if (pct >= 75) {
+        backgroundColors.push('#059669');
+        borderColors.push('#047857');
+      } else if (pct >= 40) {
+        backgroundColors.push('#1D4ED8');
+        borderColors.push('#1E40AF');
+      } else {
+        backgroundColors.push('#B91C1C');
+        borderColors.push('#991B1B');
+      }
+    });
 
     this.instances.studentModal = new Chart(ctx, {
       type: 'bar',
@@ -689,7 +850,7 @@ export class DashboardCharts {
         labels,
         datasets: [
           {
-            label: 'Score Obtained',
+            label: 'Marks Secured',
             data: scores,
             backgroundColor: backgroundColors,
             borderColor: borderColors,
@@ -705,15 +866,18 @@ export class DashboardCharts {
           legend: { display: false },
           tooltip: {
             backgroundColor: '#0F172A',
+            borderColor: '#334155',
+            borderWidth: 1,
             padding: 10,
             callbacks: {
               label: (context) => {
                 const idx = context.dataIndex;
-                const sec = idx === 0 ? student.verbal : idx === 1 ? student.java : student.coding;
-                if (!sec.isAttempted) return ' Status: NOT ATTEMPTED (NA)';
-                const max = maxes[idx];
-                const pct = ((sec.score / max) * 100).toFixed(0);
-                return ` Score: ${sec.score} / ${max} (${pct}%)`;
+                const sec = sections[idx];
+                const cell = (student.sections && student.sections[sec.key]) || student[sec.key];
+                if (!cell || !cell.isAttempted) return ' Evaluation: MODULE UNATTEMPTED (NA)';
+                const max = maxMarks[idx];
+                const pct = max > 0 ? ((cell.score / max) * 100).toFixed(0) : 0;
+                return ` Marks: ${cell.score} / ${max} (${pct}%)`;
               }
             }
           }
@@ -721,18 +885,18 @@ export class DashboardCharts {
         scales: {
           y: {
             beginAtZero: true,
-            max: 20,
+            max: yMax,
             ticks: {
-              stepSize: 5,
-              font: { family: CHART_FONTS.family, size: 11 },
+              stepSize: yMax > 50 ? 20 : yMax > 20 ? 10 : 5,
+              font: { family: CHART_FONTS.family, size: 10 },
               color: '#64748B'
             },
             grid: { color: COLORS.grid }
           },
           x: {
             ticks: {
-              font: { family: CHART_FONTS.family, size: 11, weight: '600' },
-              color: '#334155'
+              font: { family: CHART_FONTS.family, size: 10, weight: '600' },
+              color: '#1E293B'
             },
             grid: { display: false }
           }
