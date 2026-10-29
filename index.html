@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/ct-favicon.ico" />
+    <link rel="shortcut icon" href="/ct-favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CT-QISCET Test Reports</title>
+    
+    <!-- Google Fonts: Inter and JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Full-screen Drag and Drop Overlay for Instant File Upload -->
+    <div id="globalDropOverlay" class="global-drop-overlay" style="display: none;">
+      <div class="drop-overlay-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="drop-overlay-icon">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+        </svg>
+        <h2 class="drop-overlay-title">Drop your spreadsheet file here</h2>
+        <p class="drop-overlay-sub">Excel (.xlsx, .xls) or CSV files will load instantly</p>
+      </div>
+    </div>
+
+    <!-- Main Application Shell -->
+    <div class="app-shell">
+      
+      <!-- Top Navigation & Global Controls -->
+      <header class="topbar" id="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="brand-crest-wrap">
+              <div class="academic-crest-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="crest-svg">
+                  <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/>
+                  <path d="M12 6v6m0 0l3-2m-3 2l-3-2"/>
+                  <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
+            </div>
+            <div class="brand-info">
+              <div class="brand-institution-line">
+                <h1 class="brand-college-name">CT-QISCET TEST REPORTS</h1>
+              </div>
+              <div class="brand-portal-meta">
+                <span class="portal-badge-gold">STUDENT ASSESSMENT REPORTS</span>
+                <span class="meta-dot">·</span>
+                <span class="portal-sub-text">Section-Wise Marks &amp; Performance Analytics</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-center" id="topbarCenter">
+          <!-- Viewing Mode Selector -->
+          <div class="mode-switch-container" id="modeSwitchContainer">
+            <div class="segmented-control" role="tablist" aria-label="Viewing Mode">
+              <button class="seg-btn active" id="btnModeSingle" role="tab" aria-selected="true" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Single Sheet</span>
+              </button>
+              <button class="seg-btn" id="btnModeMultiple" role="tab" aria-selected="false" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h1m5-2h8a2 2 0 012 2v10a2 2 0 01-2 2h-8a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+                <span>Combined Sheets (<span id="totalSheetsCount">0</span>)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- 1-Click Fast Upload Button -->
+          <button class="btn btn-primary" id="btnOpenUploadModal" title="Click to upload your Excel or CSV spreadsheet" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            <span>Upload Spreadsheet</span>
+          </button>
+          <!-- Hidden Native File Input for instant single/multi-file selection -->
+          <input type="file" id="topbarFileInput" multiple accept=".xlsx,.xls,.csv" style="display: none;" />
+
+          <!-- Export Actions -->
+          <div class="dropdown-wrap" id="exportDropdownWrap">
+            <button class="btn btn-outline" id="btnExportMenu" title="Export report" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+              <span>Export</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chevron"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="dropdown-menu" id="exportDropdownMenu">
+              <button class="dropdown-item" id="btnExportPdf" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span id="exportPdfLabel">Download Progress Report (PDF)</span>
+              </button>
+              <button class="dropdown-item" id="btnExportAllClassesPdf" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span>Download All Classes (Class-Wise PDF)</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="btnExportExcel" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18M3 9h18M3 15h18"/></svg>
+                <span>Download Excel (.xlsx)</span>
+              </button>
+              <button class="dropdown-item" id="btnExportCsv" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Download CSV (.csv)</span>
+              </button>
+              <button class="dropdown-item" id="btnPrintDashboard" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                <span>Print Report</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ZERO STATE: Initial Upload Screen (Visible when no spreadsheet is uploaded) -->
+      <div class="zero-state-container" id="zeroStateContainer">
+        <div class="zero-state-card">
+          <div class="zero-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </div>
+
+          <h2 class="zero-title">Upload Student Test Report</h2>
+          <p class="zero-desc">
+            Upload an Excel file (<code>.xlsx</code>, <code>.xls</code>) or <code>.csv</code> to view student marks, class averages, rankings, and section performance.
+          </p>
+
+          <!-- 1-Click Fast Dropzone -->
+          <div class="zero-dropzone" id="zeroDropzone">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <h3 class="dz-title">Drag & drop your Excel file here, or click to choose</h3>
+            <p class="dz-hint">Supports single or multiple sheets (.xlsx, .xls, .csv)</p>
+            <button class="btn btn-sm btn-primary btn-browse" id="btnZeroBrowse" type="button">Choose File from Computer</button>
+            <input type="file" id="zeroFileInput" multiple accept=".xlsx,.xls,.csv" style="display: none;" />
+          </div>
+
+          <div class="zero-format-info">
+            <div class="format-header-row">
+              <span class="format-heading">Auto-Detected Columns:</span>
+              <span class="format-spec-tag">Flexible / Any Format</span>
+            </div>
+            <div class="format-chips-grid">
+              <div class="f-chip-card">
+                <span class="chip-label">Student ID</span>
+                <span class="chip-name">Member Id / Roll No / ID</span>
+              </div>
+              <div class="f-chip-card">
+                <span class="chip-label">Student Details</span>
+                <span class="chip-name">Name, Email, Groups / Class</span>
+              </div>
+              <div class="f-chip-card">
+                <span class="chip-label">Test Sections</span>
+                <span class="chip-name">Any Subjects & Marks</span>
+              </div>
+              <div class="f-chip-card highlight">
+                <span class="chip-label">Total Score</span>
+                <span class="chip-name">Total column or auto-calculated</span>
+              </div>
+            </div>
+
+            <div class="evaluation-rules-box">
+              <div class="rules-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="rules-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Scoring Rules:</span>
+              </div>
+              <ul class="rules-list">
+                <li><code>NA</code> means the student did not take that section (it does not count as zero).</li>
+                <li><code>0</code> means the student attempted the section but scored 0.</li>
+                <li><code>*</code> next to a total score means one or more sections were not attempted.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Container (Visible once a spreadsheet is uploaded) -->
+      <main class="dashboard-main" id="dashboardContent" style="display: none;">
+        
+        <!-- Context Ribbon -->
+        <div class="context-ribbon">
+          <div class="context-left">
+            <span class="context-tag">TEST REPORT</span>
+            <span class="context-divider">·</span>
+            
+            <div class="context-sheet-selector-wrap" id="contextSheetSelectorWrap">
+              <label for="sheetSelector">Active Sheet:</label>
+              <select id="sheetSelector" class="form-select sheet-select" aria-label="Select Active Sheet">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+
+            <span class="context-item" id="contextSheetName" style="display: none;">Viewing: <strong>Combined Sheets</strong></span>
+            <span class="context-divider">·</span>
+            <span class="context-item" id="contextTotalStudents">Total Students: <strong>0</strong></span>
+          </div>
+          <div class="context-right">
+            <span class="scoring-legend-label">Key:</span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-attempted">Number: Attempted</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-zero">0: Scored 0</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-na">NA: Not Attempted</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-partial">* Partial Total</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Class / Section Selector Ribbon -->
+        <section class="section-nav-ribbon" id="sectionNavRibbon">
+          <div class="section-nav-header">
+            <div class="section-nav-left">
+              <span class="section-nav-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Class / Section:
+              </span>
+              <span class="section-nav-desc">Click any section to see its specific score graphs &amp; details</span>
+            </div>
+            <div class="section-nav-right">
+              <span class="section-active-status" id="topSectionStatusText">Viewing: <strong>All Sections</strong></span>
+              <button class="btn-reset-section" id="btnResetSectionFilter" type="button" style="display: none;">
+                ✕ Show All Sections
+              </button>
+            </div>
+          </div>
+          <div class="group-chips-list" id="topGroupChipsContainer">
+            <!-- Dynamically populated class/section buttons -->
+          </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- COMBINED SHEETS SPECIAL SECTION:                               -->
+        <!-- 1. AVERAGE OF EVERY SECTION                                    -->
+        <!-- 2. TOP 10 AND LOWEST 10 STUDENTS                               -->
+        <!-- ============================================================== -->
+        <section class="combined-analytics-panel" id="combinedAnalyticsPanel" style="display: none;">
+          
+          <!-- Combined Section Averages Overview -->
+          <div class="combined-averages-card">
+            <div class="card-head-row">
+              <div>
+                <span class="panel-badge">MULTI-SHEET SUMMARY</span>
+                <h2 class="panel-title" id="combPanelTitle">Combined Section-Wise Averages</h2>
+                <p class="panel-sub" id="combPanelSub">Calculated across all uploaded sheets using attempted student scores</p>
+              </div>
+              <div class="combined-sheets-tag" id="combinedSheetsTag">2 Sheets Combined</div>
+            </div>
+
+            <div class="combined-avg-grid" id="combinedAvgGrid">
+              <!-- Dynamically populated section averages based on data -->
+            </div>
+          </div>
+
+          <!-- Top 10 and Lowest 10 Students -->
+          <div class="rankings-split-row">
+            
+            <!-- TOP 10 STUDENTS CARD -->
+            <div class="ranking-card top10-card">
+              <div class="ranking-card-header">
+                <div class="ranking-title-group">
+                  <div class="ranking-icon-wrap gold">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                  </div>
+                  <div>
+                    <h3 class="ranking-title" id="top10Title">Top 10 Students</h3>
+                    <p class="ranking-sub" id="top10Sub">Highest total scores across all combined sheets</p>
+                  </div>
+                </div>
+                <span class="ranking-count-pill" id="top10CountPill">10 Students</span>
+              </div>
+
+              <div class="ranking-table-scroll">
+                <table class="ranking-table">
+                  <thead id="top10Thead">
+                    <!-- Populated dynamically based on detected sections -->
+                  </thead>
+                  <tbody id="top10TableBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- LOWEST 10 STUDENTS CARD -->
+            <div class="ranking-card below10-card">
+              <div class="ranking-card-header">
+                <div class="ranking-title-group">
+                  <div class="ranking-icon-wrap rose">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div>
+                    <h3 class="ranking-title" id="below10Title">Lowest 10 Students</h3>
+                    <p class="ranking-sub" id="below10Sub">Students who need extra support or missed test sections</p>
+                  </div>
+                </div>
+                <span class="ranking-count-pill alert" id="below10CountPill">10 Students</span>
+              </div>
+
+              <div class="ranking-table-scroll">
+                <table class="ranking-table">
+                  <thead id="below10Thead">
+                    <!-- Populated dynamically based on detected sections -->
+                  </thead>
+                  <tbody id="below10TableBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Combined Sheet Charts Row -->
+          <div class="combined-charts-section">
+            <div class="combined-charts-grid">
+
+              <!-- Chart: Test Average Comparison -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Test Average Comparison</h3>
+                    <p class="chart-sub">Average total score per test/sheet</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartTestAverages"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Section Average per Test -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Section Average Graph</h3>
+                    <p class="chart-sub">Average score across detected sections</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartCombinedSectionAvg"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Attempted vs Not Attempted per Section -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Attempted vs Not Attempted</h3>
+                    <p class="chart-sub">Students who attempted vs skipped each section</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartAttemptedVsNot"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Group Performance Benchmark -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Group Performance Benchmark</h3>
+                    <p class="chart-sub" id="combGroupPerfSub">Average total score across departments and groups (click bar to filter)</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartCombinedGroupPerf"></canvas>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </section>
+
+        <!-- KPI Summary Cards Grid -->
+        <section class="kpi-grid" aria-label="Summary KPIs">
+          <!-- Total Students -->
+          <div class="kpi-card" data-accent="primary">
+            <div class="kpi-header">
+              <span class="kpi-label">Total Students</span>
+              <div class="kpi-icon primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-value num" id="kpiTotalStudents">0</span>
+              <div class="kpi-sub" id="kpiSheetsSub">In active spreadsheet</div>
+            </div>
+          </div>
+
+          <!-- Total Groups -->
+          <div class="kpi-card" data-accent="indigo">
+            <div class="kpi-header">
+              <span class="kpi-label">Active Groups</span>
+              <div class="kpi-icon indigo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-value num" id="kpiTotalGroups">0</span>
+              <div class="kpi-sub" id="kpiGroupsSub">AIML, CSE, AIDS & more</div>
+            </div>
+          </div>
+
+          <!-- Average Total -->
+          <div class="kpi-card" data-accent="blue">
+            <div class="kpi-header">
+              <span class="kpi-label">Class Average Total</span>
+              <div class="kpi-icon blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiAverageTotal">0.0</span>
+                <span class="kpi-unit">/ 50M</span>
+              </div>
+              <div class="kpi-sub" id="kpiAvgPctSub">Attempted scores only</div>
+            </div>
+          </div>
+
+          <!-- Highest Total -->
+          <div class="kpi-card" data-accent="emerald">
+            <div class="kpi-header">
+              <span class="kpi-label">Highest Score</span>
+              <div class="kpi-icon emerald">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiHighestTotal">0</span>
+                <span class="kpi-unit">/ 50M</span>
+              </div>
+              <div class="kpi-sub" id="kpiTopStudentsSub">Top performer score</div>
+            </div>
+          </div>
+
+          <!-- Students with NA -->
+          <div class="kpi-card" data-accent="amber">
+            <div class="kpi-header">
+              <span class="kpi-label">Students with NA</span>
+              <div class="kpi-icon amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiStudentsWithNA">0</span>
+                <span class="kpi-tag-rate" id="kpiNaRateBadge">0%</span>
+              </div>
+              <div class="kpi-sub">≥1 section not attempted</div>
+            </div>
+          </div>
+
+          <!-- Pass Rate -->
+          <div class="kpi-card" data-accent="rose">
+            <div class="kpi-header">
+              <span class="kpi-label">Pass Rate</span>
+              <div class="kpi-icon rose">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiPassRate">0%</span>
+                <span class="kpi-unit" id="kpiPassCountSub">0 students</span>
+              </div>
+              <div class="kpi-sub" id="kpiThresholdLabel">Mark: ≥ 40% (20M)</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section Performance Breakdown Cards -->
+        <section class="section-breakdown-row" aria-label="Section Wise Performance">
+          <div class="section-title-wrap">
+            <h2 class="section-title">Section-Wise Scores</h2>
+            <p class="section-desc">Average, highest score, and attempt counts for each section</p>
+          </div>
+
+          <div class="section-cards-grid" id="sectionCardsGrid">
+            <!-- Dynamically populated section cards based on detected sections -->
+          </div>
+        </section>
+
+        <!-- Interactive Visual Analytics Charts Grid -->
+        <section class="charts-section" aria-label="Visual Analytics">
+          <div class="charts-grid">
+            
+            <!-- Chart 1: Total Score Distribution -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Score Distribution (Total /50M)</h3>
+                  <p class="chart-sub" id="scoreDistSub">Student count by score range</p>
+                </div>
+                <div class="chart-legend-wrap">
+                  <span class="dot-legend dot-emerald">40–50 Marks</span>
+                  <span class="dot-legend dot-blue">30–39 Marks</span>
+                  <span class="dot-legend dot-amber">20–29 Marks</span>
+                  <span class="dot-legend dot-rose">&lt;20 Marks</span>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartScoreDistribution"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 2: Section Performance & Attempt Rates -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Section Performance Comparison</h3>
+                  <p class="chart-sub" id="secPerfSub">Average score % vs overall attempt rate</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartSectionPerformance"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 3: Group Performance Ranking -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Group &amp; Section Benchmark</h3>
+                  <p class="chart-sub" id="groupPerfSub">All sections in sheet • Click any bar to view section details</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartGroupPerformance"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 4: Attempt Status Breakdown -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Attempt Status Breakdown</h3>
+                  <p class="chart-sub" id="attemptStatusSub">Full attempts vs partial test attempts</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartAttemptStatus"></canvas>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Filters, Search & Table Toolbar -->
+        <section class="table-section" aria-label="Student Assessment Results">
+          
+          <div class="table-controls-card">
+            
+            <!-- Top Controls Row: Search & Status Filters -->
+            <div class="controls-top-row">
+              <!-- Search Input -->
+              <div class="search-input-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search by Member Id, Name, or Email..." autocomplete="off" />
+                <button class="clear-search-btn" id="btnClearSearch" title="Clear search" style="display: none;" type="button">✕</button>
+              </div>
+
+              <!-- Quick Status Filters -->
+              <div class="filter-tabs" role="tablist">
+                <button class="filter-tab active" data-filter="all" type="button">All Students (<span id="countTabAll">0</span>)</button>
+                <button class="filter-tab" data-filter="full" type="button">Full Attempt (<span id="countTabFull">0</span>)</button>
+                <button class="filter-tab" data-filter="has_na" type="button">Has NA (<span id="countTabNa">0</span>)</button>
+                <button class="filter-tab" data-filter="has_zero" type="button">Scored 0 (<span id="countTabZero">0</span>)</button>
+                <button class="filter-tab" data-filter="failed" type="button">Below Pass (<span id="countTabFailed">0</span>)</button>
+              </div>
+
+              <!-- Pass Mark Threshold Control -->
+              <div class="threshold-control">
+                <label for="inputThreshold" title="Pass percentage threshold">Pass Mark:</label>
+                <div class="threshold-input-wrap">
+                  <input type="number" id="inputThreshold" min="0" max="100" value="40" step="5" />
+                  <span>%</span>
+                </div>
+              </div>
+
+              <!-- Page Size Selector -->
+              <div class="page-size-control">
+                <label for="selectPageSize">Rows:</label>
+                <select id="selectPageSize" class="form-select">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Group Filter Chips Row -->
+            <div class="group-chips-row">
+              <div class="group-chips-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                <span>Groups:</span>
+              </div>
+              <div class="group-chips-list" id="groupChipsContainer">
+                <!-- Dynamically populated group chips -->
+              </div>
+            </div>
+
+            <!-- Filter Feedback & Clear Action -->
+            <div class="filter-feedback-row" id="filterFeedbackRow" style="display: none;">
+              <span class="filter-feedback-text" id="filterFeedbackText">Filtering by ...</span>
+              <button class="btn btn-xs btn-ghost" id="btnClearAllFilters" type="button">Reset All Filters</button>
+            </div>
+
+          </div>
+
+          <!-- Student Results Table Container -->
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="assessment-table" id="studentTable">
+                <thead id="studentTableThead">
+                  <tr>
+                    <th class="th-sortable" data-sort="id">Member Id <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="name">Student Name <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="email">Email <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="group">Group / Section <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable th-score th-total" data-sort="totalScore">Total Score <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="attemptedCount">Attempt Status <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="percentage">Result <span class="sort-icon">⇅</span></th>
+                    <th class="th-source" id="thSourceFile" style="display: none;">Source Sheet</th>
+                    <th class="th-actions">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="studentTableBody">
+                  <!-- Dynamically populated table rows -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State Display -->
+            <div class="table-empty-state" id="tableEmptyState" style="display: none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </div>
+              <h4 class="empty-title">No Students Match Your Filter</h4>
+              <p class="empty-desc">Try clearing your search query or choosing another group filter.</p>
+              <button class="btn btn-outline btn-sm" id="btnEmptyResetFilters" type="button">Reset Filters</button>
+            </div>
+
+            <!-- Table Footer & Pagination -->
+            <div class="table-footer">
+              <div class="table-summary" id="tableSummaryText">
+                Showing 0 to 0 of 0 students
+              </div>
+              <div class="pagination-controls" id="paginationControls">
+                <!-- Dynamically generated pagination buttons -->
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+
+      <!-- Dashboard Footer -->
+      <footer class="app-footer">
+        <div class="footer-left">
+          <span class="footer-inst-name">CT-QISCET Test Reports</span>
+          <span class="footer-sep">·</span>
+          <span>Student Assessment & Test Reports</span>
+        </div>
+        <div class="footer-right">
+          <span class="footer-note">Score rules: <code>NA</code> means skipped · <code>0</code> means scored zero · <code>*</code> means partial total</span>
+        </div>
+      </footer>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODALS & OVERLAYS                                              -->
+    <!-- ============================================================== -->
+
+    <!-- Upload Modal -->
+    <div class="modal-backdrop" id="modalUpload" role="dialog" aria-modal="true" style="display: none;">
+      <div class="modal-dialog modal-md">
+        <div class="modal-header">
+          <div class="modal-header-info">
+            <h3 class="modal-title">Upload Spreadsheets</h3>
+            <p class="modal-sub">Choose single or multiple Excel (.xlsx, .xls) or CSV files</p>
+          </div>
+          <button class="modal-close" id="btnCloseUploadModal" aria-label="Close modal" type="button">✕</button>
+        </div>
+        
+        <div class="modal-body">
+          <div class="dropzone" id="fileDropzone">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <h4 class="dz-title">Drag & drop files here, or <span class="dz-browse">Browse</span></h4>
+            <p class="dz-hint">Click anywhere in this box to select your file</p>
+            <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv" style="display: none;" />
+          </div>
+
+          <div class="upload-file-list" id="uploadFileList" style="display: none;">
+            <div class="list-heading">Selected Files (<span id="queuedFileCount">0</span>):</div>
+            <div class="file-items-container" id="fileItemsContainer"></div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btnCancelUpload" type="button">Cancel</button>
+          <button class="btn btn-primary" id="btnProcessUploadedFiles" disabled type="button">Import File(s)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Individual Student Report Card -->
+    <div class="modal-backdrop" id="modalStudentDetail" role="dialog" aria-modal="true" style="display: none;">
+      <div class="modal-dialog modal-lg student-modal-dialog">
+        <div class="modal-header student-modal-header">
+          <div class="student-profile-header">
+            <div class="student-avatar" id="studentDetailAvatar">—</div>
+            <div class="student-meta">
+              <div class="student-name-row">
+                <h2 class="student-detail-name" id="studentDetailName">—</h2>
+                <span class="status-pill" id="studentDetailResultPill">—</span>
+              </div>
+              <div class="student-detail-sub">
+                <span class="sub-item" id="studentDetailId">ID: —</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item" id="studentDetailEmail">—</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item group-badge" id="studentDetailGroup">—</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item" id="studentDetailSource">—</span>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close" id="btnCloseStudentModal" aria-label="Close modal" type="button">✕</button>
+        </div>
+
+        <div class="modal-body student-modal-body">
+          
+          <!-- Mini Performance KPIs -->
+          <div class="student-kpi-grid">
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Total Score</span>
+              <span class="kpi-box-val num" id="studentModalTotal">0 <small>/ 50M</small></span>
+              <span class="kpi-box-sub" id="studentModalPartialNote">Full attempt</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Percentage</span>
+              <span class="kpi-box-val num" id="studentModalPct">0%</span>
+              <span class="kpi-box-sub">Overall score</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Class Rank</span>
+              <span class="kpi-box-val num" id="studentModalRank">#1</span>
+              <span class="kpi-box-sub" id="studentModalTotalStudents">of 0 students</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Sections Attempted</span>
+              <span class="kpi-box-val" id="studentModalAttemptStatus">3 / 3</span>
+              <span class="kpi-box-sub" id="studentModalNaStatus">0 Unattempted</span>
+            </div>
+          </div>
+
+          <!-- Section Breakdown Table & Mini Chart -->
+          <div class="student-modal-split">
+            <!-- Left: Section Table -->
+            <div class="student-section-table-wrap">
+              <h4 class="student-split-title">Section Scores</h4>
+              <table class="student-sec-table">
+                <thead>
+                  <tr>
+                    <th>Section</th>
+                    <th>Max</th>
+                    <th>Score</th>
+                    <th>%</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="studentModalSecTableBody">
+                  <!-- Dynamically populated section scores -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Right: Mini Bar Chart -->
+            <div class="student-chart-wrap">
+              <h4 class="student-split-title">Score vs Maximum Marks</h4>
+              <div class="student-modal-chart-canvas">
+                <canvas id="studentModalChartCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer student-modal-footer">
+          <button class="btn btn-outline" id="btnCloseStudentModalBtn" type="button">Close</button>
+          <button class="btn btn-primary" id="btnDownloadStudentPdf" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            <span>Download PDF Report</span>
+          </button>
+          <button class="btn btn-outline" id="btnPrintStudentReport" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>Print Student Report Card</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print-Only Single Student Sheet -->
+    <div id="printStudentSheet" class="print-student-sheet" style="display: none;">
+      <div class="print-header-row">
+        <div>
+          <h1 class="print-college-title">CT-QISCET TEST REPORTS</h1>
+          <p class="print-college-sub">Student Assessment &amp; Performance Analytics</p>
+          <div class="print-report-tag">INDIVIDUAL STUDENT PROGRESS REPORT</div>
+        </div>
+        <div class="print-brand-mark">
+          <div class="print-date" id="printReportDate">Date: 29 Oct 2026</div>
+        </div>
+      </div>
+
+      <div class="print-student-bio">
+        <div class="bio-col">
+          <div>Student Name: <strong id="printStudentName" style="font-size: 0.95rem; color: #0F172A;">—</strong></div>
+          <div>Roll / Member ID: <strong class="num" id="printStudentId">—</strong></div>
+          <div>Email: <span id="printStudentEmail">—</span></div>
+        </div>
+        <div class="bio-col">
+          <div>Class / Section: <strong id="printStudentGroup">—</strong></div>
+          <div>Class Rank: <strong class="num" id="printStudentRank" style="color: #2563EB;">—</strong></div>
+          <div>Source Sheet: <span id="printStudentSource">—</span></div>
+        </div>
+      </div>
+
+      <div class="print-kpis-row" id="printStudentKpis">
+        <!-- Injected during print -->
+      </div>
+
+      <h3 class="print-section-heading">Detailed Section Score Breakdown</h3>
+      <table class="print-table" id="printStudentTable">
+        <!-- Injected during print -->
+      </table>
+
+      <!-- Teacher Signatures Block -->
+      <div class="print-signatures-block">
+        <div class="sig-col">
+          <div class="sig-line"></div>
+          <div class="sig-title">Faculty Evaluator</div>
+        </div>
+        <div class="sig-col">
+          <div class="sig-line"></div>
+          <div class="sig-title">Head of Department</div>
+        </div>
+        <div class="sig-col">
+          <div class="sig-line"></div>
+          <div class="sig-title">Principal</div>
+        </div>
+      </div>
+
+      <div class="print-footer-row">
+        <div>Generated by CT-QISCET Test Reports Platform</div>
+        <div>Page 1 of 1</div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toastMessage" role="alert" aria-live="polite"></div>
+
+    <!-- Main JavaScript Entry -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

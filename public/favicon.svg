@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background circle in dark navy/blue -->
+  <circle cx="16" cy="16" r="16" fill="#0A1628"/>
+  <!-- Code brackets icon -->
+  <text x="16" y="13" font-family="monospace" font-size="8" font-weight="bold" fill="#FF6B2B" text-anchor="middle">&lt;/&gt;</text>
+  <!-- CT text -->
+  <text x="16" y="23" font-family="Arial, sans-serif" font-size="8" font-weight="900" fill="white" text-anchor="middle">CT</text>
+</svg>
