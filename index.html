@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/ct-favicon.ico" />
+    <link rel="shortcut icon" href="/ct-favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CT-QISCET Test Reports | Student Assessment & Performance Analytics</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Main Application Shell -->
+    <div class="app-shell">
+      
+      <!-- Top Navigation & Global Controls (Fixed, Stable Layout) -->
+      <header class="topbar" id="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="brand-logo-wrap">
+              <img src="/ct-favicon.ico" alt="CodeTantra Logo" class="brand-logo-img" />
+            </div>
+            <div class="brand-info">
+              <div class="brand-title-wrap">
+                <h1 class="brand-title"><span class="brand-ct">Code</span><span class="brand-tantra">Tantra</span> <span class="brand-tag">Test Reports</span></h1>
+                <span class="brand-badge">CT-QISCET</span>
+              </div>
+              <p class="brand-subtitle">Student Assessment & Section-Wise Performance Evaluation</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-center" id="topbarCenter">
+          <!-- Viewing Mode Selector (Always stable, no jumping) -->
+          <div class="mode-switch-container" id="modeSwitchContainer">
+            <div class="segmented-control" role="tablist" aria-label="Viewing Mode">
+              <button class="seg-btn active" id="btnModeSingle" role="tab" aria-selected="true" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Single Sheet
+              </button>
+              <button class="seg-btn" id="btnModeMultiple" role="tab" aria-selected="false" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h1m5-2h8a2 2 0 012 2v10a2 2 0 01-2 2h-8a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+                Combined Sheets (<span id="totalSheetsCount">0</span>)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Upload Action Button -->
+          <button class="btn btn-primary" id="btnOpenUploadModal" title="Upload spreadsheet (.xlsx, .xls, .csv)" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            <span>Upload Spreadsheet(s)</span>
+          </button>
+
+          <!-- Export Actions -->
+          <div class="dropdown-wrap" id="exportDropdownWrap">
+            <button class="btn btn-outline" id="btnExportMenu" title="Export assessment report" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+              <span>Export</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chevron"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="dropdown-menu" id="exportDropdownMenu">
+              <button class="dropdown-item" id="btnExportExcel" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18M3 9h18M3 15h18"/></svg>
+                Download Excel (.xlsx)
+              </button>
+              <button class="dropdown-item" id="btnExportCsv" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Download CSV (.csv)
+              </button>
+              <button class="dropdown-item" id="btnPrintDashboard" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print / Save as PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Data Validation Alert Banner (if duplicates or issues detected) -->
+      <div class="alert-banner" id="validationBanner" style="display: none;">
+        <div class="alert-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="alert-content">
+          <span class="alert-title">Dataset Notice:</span>
+          <span id="validationMessage">Duplicate student records or unparseable scores were found.</span>
+        </div>
+        <button class="alert-close" id="btnCloseValidationBanner" aria-label="Close" type="button">✕</button>
+      </div>
+
+      <!-- ZERO STATE: Initial Upload Screen (Visible when no spreadsheet is uploaded) -->
+      <div class="zero-state-container" id="zeroStateContainer">
+        <div class="zero-state-card">
+          <div class="zero-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <h2 class="zero-title">Welcome to CT-QISCET Test Reports</h2>
+          <p class="zero-desc">
+            Upload one or multiple assessment spreadsheets (Excel <code>.xlsx</code>, <code>.xls</code>, or <code>.csv</code>) to generate comprehensive student test analytics, section averages, and performance rankings.
+          </p>
+
+          <!-- Dropzone in Zero State -->
+          <div class="zero-dropzone" id="zeroDropzone">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <h3 class="dz-title">Drag & drop your test report file(s) here</h3>
+            <p class="dz-hint">or <button class="btn btn-sm btn-primary" id="btnZeroBrowse" type="button">Browse Files from Computer</button></p>
+            <input type="file" id="zeroFileInput" multiple accept=".xlsx,.xls,.csv" style="display: none;" />
+          </div>
+
+          <div class="zero-format-info">
+            <span class="format-heading">Expected Columns (Auto-Mapped):</span>
+            <div class="format-chips">
+              <span class="f-chip">Member Id</span>
+              <span class="f-chip">Name</span>
+              <span class="f-chip">Email</span>
+              <span class="f-chip">Groups</span>
+              <span class="f-chip">Verbal(10M)</span>
+              <span class="f-chip">Java MCQ's (20M)</span>
+              <span class="f-chip">Coding (20M)</span>
+              <span class="f-chip">Total (50M)</span>
+            </div>
+            <p class="format-note">
+              Headers are automatically matched. Values marked <code>NA</code> are preserved as "Not Attempted" (not zero), and numeric <code>0</code> is distinctively tracked.
+            </p>
+          </div>
+
+          <!-- Quick Test Option -->
+          <div class="zero-demo-row">
+            <span>Want to test the platform first?</span>
+            <button class="btn btn-xs btn-outline" id="btnLoadDemoData" type="button">Load Sample Test Data</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Container (Visible once sheets are uploaded) -->
+      <main class="dashboard-main" id="dashboardContent" style="display: none;">
+        
+        <!-- Institution & Report Context Ribbon -->
+        <div class="context-ribbon">
+          <div class="context-left">
+            <span class="context-tag">CT-QISCET EVALUATION</span>
+            <span class="context-divider">·</span>
+            
+            <!-- In Single Sheet mode, dropdown is right here in the toolbar, NOT jumping in the topbar! -->
+            <div class="context-sheet-selector-wrap" id="contextSheetSelectorWrap">
+              <label for="sheetSelector">Active Sheet:</label>
+              <select id="sheetSelector" class="form-select sheet-select" aria-label="Select Active Sheet">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+
+            <span class="context-item" id="contextSheetName" style="display: none;">Viewing: <strong>Combined Sheets</strong></span>
+            <span class="context-divider">·</span>
+            <span class="context-item" id="contextTotalStudents">Total Students: <strong>0</strong></span>
+          </div>
+          <div class="context-right">
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-attempted">Numeric: Attempted</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-zero">0: Scored 0</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-na">NA: Not Attempted</span>
+            </span>
+            <span class="scoring-legend-item">
+              <span class="legend-badge legend-partial">* Partial Total</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- COMBINED SHEETS SPECIAL SECTION:                               -->
+        <!-- 1. AVERAGE OF EVERY SECTION                                    -->
+        <!-- 2. TOP 10 AND BELOW 10 PERSONS SEPARATELY                      -->
+        <!-- ============================================================== -->
+        <section class="combined-analytics-panel" id="combinedAnalyticsPanel" style="display: none;">
+          
+          <!-- Combined Section Averages Overview -->
+          <div class="combined-averages-card">
+            <div class="card-head-row">
+              <div>
+                <span class="panel-badge">MULTI-SHEET AGGREGATE</span>
+                <h2 class="panel-title">Combined Section-Wise Averages</h2>
+                <p class="panel-sub">Calculated across all uploaded spreadsheets using attempted student scores</p>
+              </div>
+              <div class="combined-sheets-tag" id="combinedSheetsTag">2 Sheets Combined</div>
+            </div>
+
+            <div class="combined-avg-grid">
+              <!-- Verbal Ability Combined Avg -->
+              <div class="comb-avg-box">
+                <span class="comb-avg-label">Verbal Ability (10M)</span>
+                <div class="comb-avg-num-wrap">
+                  <span class="comb-avg-val num" id="combAvgVerbal">0.0</span>
+                  <span class="comb-avg-max">/ 10</span>
+                </div>
+                <div class="comb-avg-sub" id="combPctVerbal">0% Average Score</div>
+                <div class="comb-attempt-rate" id="combAttemptVerbal">Attempt Rate: 0%</div>
+              </div>
+
+              <!-- Java MCQ's Combined Avg -->
+              <div class="comb-avg-box">
+                <span class="comb-avg-label">Java MCQ's (20M)</span>
+                <div class="comb-avg-num-wrap">
+                  <span class="comb-avg-val num" id="combAvgJava">0.0</span>
+                  <span class="comb-avg-max">/ 20</span>
+                </div>
+                <div class="comb-avg-sub" id="combPctJava">0% Average Score</div>
+                <div class="comb-attempt-rate" id="combAttemptJava">Attempt Rate: 0%</div>
+              </div>
+
+              <!-- Coding Combined Avg -->
+              <div class="comb-avg-box">
+                <span class="comb-avg-label">Coding Hands-on (20M)</span>
+                <div class="comb-avg-num-wrap">
+                  <span class="comb-avg-val num" id="combAvgCoding">0.0</span>
+                  <span class="comb-avg-max">/ 20</span>
+                </div>
+                <div class="comb-avg-sub" id="combPctCoding">0% Average Score</div>
+                <div class="comb-attempt-rate" id="combAttemptCoding">Attempt Rate: 0%</div>
+              </div>
+
+              <!-- Overall Total Combined Avg -->
+              <div class="comb-avg-box highlight">
+                <span class="comb-avg-label">Overall Total Average</span>
+                <div class="comb-avg-num-wrap">
+                  <span class="comb-avg-val num" id="combAvgTotal">0.0</span>
+                  <span class="comb-avg-max">/ 50</span>
+                </div>
+                <div class="comb-avg-sub" id="combPctTotal">0% Class Average</div>
+                <div class="comb-attempt-rate" id="combPassRate">Overall Pass Rate: 0%</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top 10 and Below 10 Persons Section -->
+          <div class="rankings-split-row">
+            
+            <!-- TOP 10 PERFORMERS CARD -->
+            <div class="ranking-card top10-card">
+              <div class="ranking-card-header">
+                <div class="ranking-title-group">
+                  <div class="ranking-icon-wrap gold">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                  </div>
+                  <div>
+                    <h3 class="ranking-title">Top 10 Performers</h3>
+                    <p class="ranking-sub">Highest total scores across all combined sheets</p>
+                  </div>
+                </div>
+                <span class="ranking-count-pill" id="top10CountPill">10 Students</span>
+              </div>
+
+              <div class="ranking-table-scroll">
+                <table class="ranking-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 48px;">Rank</th>
+                      <th>Student</th>
+                      <th>Group</th>
+                      <th style="text-align: right;">Verbal</th>
+                      <th style="text-align: right;">Java</th>
+                      <th style="text-align: right;">Coding</th>
+                      <th style="text-align: right;">Total</th>
+                      <th>Source Sheet</th>
+                    </tr>
+                  </thead>
+                  <tbody id="top10TableBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- BELOW 10 (BOTTOM 10) PERFORMERS CARD -->
+            <div class="ranking-card below10-card">
+              <div class="ranking-card-header">
+                <div class="ranking-title-group">
+                  <div class="ranking-icon-wrap rose">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div>
+                    <h3 class="ranking-title">Below 10 Performers</h3>
+                    <p class="ranking-sub">Lowest scores / students needing support or missed sections</p>
+                  </div>
+                </div>
+                <span class="ranking-count-pill alert" id="below10CountPill">10 Students</span>
+              </div>
+
+              <div class="ranking-table-scroll">
+                <table class="ranking-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 48px;">Rank</th>
+                      <th>Student</th>
+                      <th>Group</th>
+                      <th style="text-align: right;">Verbal</th>
+                      <th style="text-align: right;">Java</th>
+                      <th style="text-align: right;">Coding</th>
+                      <th style="text-align: right;">Total</th>
+                      <th>Source Sheet</th>
+                    </tr>
+                  </thead>
+                  <tbody id="below10TableBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Combined Sheet Charts Row -->
+          <div class="combined-charts-section">
+            <div class="combined-charts-grid">
+
+              <!-- Chart: Test Average Comparison (one bar per sheet/test) -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Test Average Comparison</h3>
+                    <p class="chart-sub">Average total score per test/sheet across all combined assessments</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartTestAverages"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Section Average per Test (grouped/per sheet) -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Section Average Graph</h3>
+                    <p class="chart-sub">Average score per section (Verbal / Java / Coding) across all sheets combined</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartCombinedSectionAvg"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Attempted vs Not Attempted per Section -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Attempted vs Not Attempted</h3>
+                    <p class="chart-sub">Student count who attempted vs skipped (NA) each section</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartAttemptedVsNot"></canvas>
+                </div>
+              </div>
+
+              <!-- Chart: Group Performance Benchmark -->
+              <div class="chart-card combined-chart-card">
+                <div class="chart-header">
+                  <div>
+                    <h3 class="chart-title">Group Performance Benchmark</h3>
+                    <p class="chart-sub">Average total score across departments and sections</p>
+                  </div>
+                </div>
+                <div class="chart-canvas-container">
+                  <canvas id="chartCombinedGroupPerf"></canvas>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </section>
+
+        <!-- KPI Summary Cards Grid -->
+        <section class="kpi-grid" aria-label="Executive Summary KPIs">
+          <!-- Total Students -->
+          <div class="kpi-card" data-accent="primary">
+            <div class="kpi-header">
+              <span class="kpi-label">Total Students</span>
+              <div class="kpi-icon primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-value num" id="kpiTotalStudents">0</span>
+              <div class="kpi-sub" id="kpiSheetsSub">In active spreadsheet</div>
+            </div>
+          </div>
+
+          <!-- Total Groups -->
+          <div class="kpi-card" data-accent="indigo">
+            <div class="kpi-header">
+              <span class="kpi-label">Active Groups</span>
+              <div class="kpi-icon indigo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-value num" id="kpiTotalGroups">0</span>
+              <div class="kpi-sub" id="kpiGroupsSub">AIML, CSE, AIDS & more</div>
+            </div>
+          </div>
+
+          <!-- Average Total -->
+          <div class="kpi-card" data-accent="blue">
+            <div class="kpi-header">
+              <span class="kpi-label">Class Average Total</span>
+              <div class="kpi-icon blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiAverageTotal">0.0</span>
+                <span class="kpi-unit">/ 50M</span>
+              </div>
+              <div class="kpi-sub" id="kpiAvgPctSub">Attempted scores only</div>
+            </div>
+          </div>
+
+          <!-- Highest Total -->
+          <div class="kpi-card" data-accent="emerald">
+            <div class="kpi-header">
+              <span class="kpi-label">Highest Score</span>
+              <div class="kpi-icon emerald">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiHighestTotal">0</span>
+                <span class="kpi-unit">/ 50M</span>
+              </div>
+              <div class="kpi-sub" id="kpiTopStudentsSub">Top performer score</div>
+            </div>
+          </div>
+
+          <!-- Students with NA -->
+          <div class="kpi-card" data-accent="amber">
+            <div class="kpi-header">
+              <span class="kpi-label">Students with NA</span>
+              <div class="kpi-icon amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiStudentsWithNA">0</span>
+                <span class="kpi-tag-rate" id="kpiNaRateBadge">0%</span>
+              </div>
+              <div class="kpi-sub">≥1 section not attempted</div>
+            </div>
+          </div>
+
+          <!-- Pass Rate -->
+          <div class="kpi-card" data-accent="rose">
+            <div class="kpi-header">
+              <span class="kpi-label">Pass Rate</span>
+              <div class="kpi-icon rose">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+            </div>
+            <div class="kpi-body">
+              <div class="kpi-value-row">
+                <span class="kpi-value num" id="kpiPassRate">0%</span>
+                <span class="kpi-unit" id="kpiPassCountSub">0 students</span>
+              </div>
+              <div class="kpi-sub" id="kpiThresholdLabel">Mark: ≥ 40% (20M)</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section Performance Breakdown Cards -->
+        <section class="section-breakdown-row" aria-label="Section Wise Performance">
+          <div class="section-title-wrap">
+            <h2 class="section-title">Section-Wise Performance Breakdown</h2>
+            <p class="section-desc">Average, highest score, attempt counts, and zero scores across assessment sections</p>
+          </div>
+
+          <div class="section-cards-grid">
+            <!-- Verbal Ability (10M) -->
+            <div class="sec-card" id="cardSecVerbal">
+              <div class="sec-card-header">
+                <div class="sec-info">
+                  <span class="sec-badge">10 MARKS MAX</span>
+                  <h3 class="sec-title">Verbal Ability</h3>
+                </div>
+                <div class="sec-avg-chip" id="verbalAvgPctChip">0% Avg</div>
+              </div>
+              <div class="sec-card-body">
+                <div class="sec-kpi-row">
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Average</span>
+                    <span class="sec-kpi-val num" id="verbalAvgVal">0.0 <small>/ 10</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Highest</span>
+                    <span class="sec-kpi-val num" id="verbalHighVal">0 <small>/ 10</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Attempted</span>
+                    <span class="sec-kpi-val num" id="verbalAttemptedVal">0</span>
+                  </div>
+                </div>
+
+                <!-- Progress & Attempt Breakdown -->
+                <div class="sec-progress-wrap">
+                  <div class="sec-progress-header">
+                    <span>Attempt Rate</span>
+                    <span class="num" id="verbalAttemptRate">0%</span>
+                  </div>
+                  <div class="sec-progress-bar">
+                    <div class="sec-progress-fill success" id="verbalAttemptBar" style="width: 0%"></div>
+                  </div>
+                </div>
+
+
+              </div>
+            </div>
+
+            <!-- Java MCQ's (20M) -->
+            <div class="sec-card" id="cardSecJava">
+              <div class="sec-card-header">
+                <div class="sec-info">
+                  <span class="sec-badge">20 MARKS MAX</span>
+                  <h3 class="sec-title">Java MCQ's</h3>
+                </div>
+                <div class="sec-avg-chip" id="javaAvgPctChip">0% Avg</div>
+              </div>
+              <div class="sec-card-body">
+                <div class="sec-kpi-row">
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Average</span>
+                    <span class="sec-kpi-val num" id="javaAvgVal">0.0 <small>/ 20</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Highest</span>
+                    <span class="sec-kpi-val num" id="javaHighVal">0 <small>/ 20</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Attempted</span>
+                    <span class="sec-kpi-val num" id="javaAttemptedVal">0</span>
+                  </div>
+                </div>
+
+                <div class="sec-progress-wrap">
+                  <div class="sec-progress-header">
+                    <span>Attempt Rate</span>
+                    <span class="num" id="javaAttemptRate">0%</span>
+                  </div>
+                  <div class="sec-progress-bar">
+                    <div class="sec-progress-fill primary" id="javaAttemptBar" style="width: 0%"></div>
+                  </div>
+                </div>
+
+
+              </div>
+            </div>
+
+            <!-- Coding (20M) -->
+            <div class="sec-card" id="cardSecCoding">
+              <div class="sec-card-header">
+                <div class="sec-info">
+                  <span class="sec-badge">20 MARKS MAX</span>
+                  <h3 class="sec-title">Coding (Hands-on)</h3>
+                </div>
+                <div class="sec-avg-chip" id="codingAvgPctChip">0% Avg</div>
+              </div>
+              <div class="sec-card-body">
+                <div class="sec-kpi-row">
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Average</span>
+                    <span class="sec-kpi-val num" id="codingAvgVal">0.0 <small>/ 20</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Highest</span>
+                    <span class="sec-kpi-val num" id="codingHighVal">0 <small>/ 20</small></span>
+                  </div>
+                  <div class="sec-kpi">
+                    <span class="sec-kpi-label">Attempted</span>
+                    <span class="sec-kpi-val num" id="codingAttemptedVal">0</span>
+                  </div>
+                </div>
+
+                <div class="sec-progress-wrap">
+                  <div class="sec-progress-header">
+                    <span>Attempt Rate</span>
+                    <span class="num" id="codingAttemptRate">0%</span>
+                  </div>
+                  <div class="sec-progress-bar">
+                    <div class="sec-progress-fill indigo" id="codingAttemptBar" style="width: 0%"></div>
+                  </div>
+                </div>
+
+
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Interactive Analytics Charts Grid -->
+        <section class="charts-section" aria-label="Visual Analytics">
+          <div class="charts-grid">
+            
+            <!-- Chart 1: Total Score Distribution -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Score Distribution (Total /50M)</h3>
+                  <p class="chart-sub">Student count tiered by overall performance range</p>
+                </div>
+                <div class="chart-legend-wrap">
+                  <span class="dot-legend dot-emerald">40-50</span>
+                  <span class="dot-legend dot-blue">30-39</span>
+                  <span class="dot-legend dot-amber">20-29</span>
+                  <span class="dot-legend dot-rose">&lt;20</span>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartScoreDistribution"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 2: Section Performance & Attempt Rates -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Section Performance Comparison</h3>
+                  <p class="chart-sub">Average score % of attempted students vs overall attempt rate</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartSectionPerformance"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 3: Group Performance Ranking -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Group Performance Benchmark</h3>
+                  <p class="chart-sub">Average total score across departments and sections</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartGroupPerformance"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 4: Attempt Status Breakdown -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Attempt Status Breakdown</h3>
+                  <p class="chart-sub">Distribution of full vs partial test attempts</p>
+                </div>
+              </div>
+              <div class="chart-canvas-container">
+                <canvas id="chartAttemptStatus"></canvas>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Filters, Search & Table Toolbar -->
+        <section class="table-section" aria-label="Student Assessment Results">
+          
+          <div class="table-controls-card">
+            
+            <!-- Top Controls Row: Search & Status Filters -->
+            <div class="controls-top-row">
+              <!-- Search Input -->
+              <div class="search-input-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search by Member Id, Name, or Email..." autocomplete="off" />
+                <button class="clear-search-btn" id="btnClearSearch" title="Clear search" style="display: none;" type="button">✕</button>
+              </div>
+
+              <!-- Quick Status Filters -->
+              <div class="filter-tabs" role="tablist">
+                <button class="filter-tab active" data-filter="all" type="button">All Students (<span id="countTabAll">0</span>)</button>
+                <button class="filter-tab" data-filter="full" type="button">Full Attempt (<span id="countTabFull">0</span>)</button>
+                <button class="filter-tab" data-filter="has_na" type="button">Has NA (<span id="countTabNa">0</span>)</button>
+                <button class="filter-tab" data-filter="has_zero" type="button">Scored 0 (<span id="countTabZero">0</span>)</button>
+                <button class="filter-tab" data-filter="failed" type="button">Below Pass (<span id="countTabFailed">0</span>)</button>
+              </div>
+
+              <!-- Pass Mark Threshold Control -->
+              <div class="threshold-control">
+                <label for="inputThreshold" title="Pass percentage threshold">Pass Mark:</label>
+                <div class="threshold-input-wrap">
+                  <input type="number" id="inputThreshold" min="0" max="100" value="40" step="5" />
+                  <span>%</span>
+                </div>
+              </div>
+
+              <!-- Page Size Selector -->
+              <div class="page-size-control">
+                <label for="selectPageSize">Rows:</label>
+                <select id="selectPageSize" class="form-select">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Group Filter Chips Row -->
+            <div class="group-chips-row">
+              <div class="group-chips-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                <span>Groups:</span>
+              </div>
+              <div class="group-chips-list" id="groupChipsContainer">
+                <!-- Dynamically populated group chips -->
+              </div>
+            </div>
+
+            <!-- Filter Feedback & Clear Action -->
+            <div class="filter-feedback-row" id="filterFeedbackRow" style="display: none;">
+              <span class="filter-feedback-text" id="filterFeedbackText">Filtering by ...</span>
+              <button class="btn btn-xs btn-ghost" id="btnClearAllFilters" type="button">Reset All Filters</button>
+            </div>
+
+          </div>
+
+          <!-- Student Results Table Container -->
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="assessment-table" id="studentTable">
+                <thead>
+                  <tr>
+                    <th class="th-sortable" data-sort="id">Member Id <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="name">Student Name <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="email">Email <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="group">Groups <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable th-score" data-sort="verbal">Verbal (10M) <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable th-score" data-sort="java">Java MCQ's (20M) <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable th-score" data-sort="coding">Coding (20M) <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable th-score th-total" data-sort="totalScore">Total (50M) <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="attemptedCount">Attempt Status <span class="sort-icon">⇅</span></th>
+                    <th class="th-sortable" data-sort="percentage">Result <span class="sort-icon">⇅</span></th>
+                    <th class="th-source" id="thSourceFile" style="display: none;">Source Sheet</th>
+                    <th class="th-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="studentTableBody">
+                  <!-- Dynamically populated table rows -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State Display -->
+            <div class="table-empty-state" id="tableEmptyState" style="display: none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </div>
+              <h4 class="empty-title">No Students Match Your Criteria</h4>
+              <p class="empty-desc">Try adjusting your search query, group filter, or attempt status filter.</p>
+              <button class="btn btn-outline btn-sm" id="btnEmptyResetFilters" type="button">Clear Active Filters</button>
+            </div>
+
+            <!-- Table Footer & Pagination -->
+            <div class="table-footer">
+              <div class="table-summary" id="tableSummaryText">
+                Showing 0 to 0 of 0 students
+              </div>
+              <div class="pagination-controls" id="paginationControls">
+                <!-- Dynamically generated pagination buttons -->
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+
+      <!-- Dashboard Footer -->
+      <footer class="app-footer">
+        <div class="footer-left">
+          <span>CT-QISCET Test Reports · Student Assessment Analytics & Section Evaluation</span>
+        </div>
+        <div class="footer-right">
+          <span class="footer-note">Preserving score integrity: NA distinct from numeric 0 · Partial totals identified</span>
+        </div>
+      </footer>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODALS & OVERLAYS                                              -->
+    <!-- ============================================================== -->
+
+    <!-- Upload / Add Files Modal -->
+    <div class="modal-backdrop" id="modalUpload" role="dialog" aria-modal="true" style="display: none;">
+      <div class="modal-dialog modal-md">
+        <div class="modal-header">
+          <div class="modal-header-info">
+            <h3 class="modal-title">Upload Assessment Spreadsheets</h3>
+            <p class="modal-sub">Supports single or multiple files in .xlsx, .xls, or .csv formats</p>
+          </div>
+          <button class="modal-close" id="btnCloseUploadModal" aria-label="Close modal" type="button">✕</button>
+        </div>
+        
+        <div class="modal-body">
+          <!-- Drag and Drop Dropzone -->
+          <div class="dropzone" id="fileDropzone">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <h4 class="dz-title">Drag & drop spreadsheet files here, or <span class="dz-browse">Browse</span></h4>
+            <p class="dz-hint">Select one or multiple Excel (.xlsx, .xls) or CSV files</p>
+            <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv" style="display: none;" />
+          </div>
+
+          <!-- Uploaded Files Preview List -->
+          <div class="upload-file-list" id="uploadFileList" style="display: none;">
+            <div class="list-heading">Queued Files (<span id="queuedFileCount">0</span>):</div>
+            <div class="file-items-container" id="fileItemsContainer"></div>
+          </div>
+
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btnCancelUpload" type="button">Cancel</button>
+          <button class="btn btn-primary" id="btnProcessUploadedFiles" disabled type="button">Import Selected Files</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Individual Student Detail Assessment Report Modal -->
+    <div class="modal-backdrop" id="modalStudentDetail" role="dialog" aria-modal="true" style="display: none;">
+      <div class="modal-dialog modal-lg student-modal-dialog">
+        <div class="modal-header student-modal-header">
+          <div class="student-profile-header">
+            <div class="student-avatar" id="studentDetailAvatar">ST</div>
+            <div class="student-meta">
+              <div class="student-name-row">
+                <h2 class="student-detail-name" id="studentDetailName">GUDE LAKSHMI LALASYA</h2>
+                <span class="status-pill" id="studentDetailResultPill">Pass</span>
+              </div>
+              <div class="student-detail-sub">
+                <span class="sub-item" id="studentDetailId">ID: 25491A4243</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item" id="studentDetailEmail">25491a4243@qiscet.edu.in</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item group-badge" id="studentDetailGroup">2025-2029-Prime-AIML-1</span>
+                <span class="sub-divider">•</span>
+                <span class="sub-item" id="studentDetailSource">Source: Prime_Batch_1</span>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close" id="btnCloseStudentModal" aria-label="Close modal" type="button">✕</button>
+        </div>
+
+        <div class="modal-body student-modal-body">
+          
+          <!-- Mini Performance KPIs -->
+          <div class="student-kpi-grid">
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Total Score</span>
+              <span class="kpi-box-val num" id="studentModalTotal">30 <small>/ 50M</small></span>
+              <span class="kpi-box-sub" id="studentModalPartialNote">Full attempt</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Percentage</span>
+              <span class="kpi-box-val num" id="studentModalPct">60.0%</span>
+              <span class="kpi-box-sub">Overall assessment</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Class Rank</span>
+              <span class="kpi-box-val num" id="studentModalRank">#4</span>
+              <span class="kpi-box-sub" id="studentModalTotalStudents">of 9 students</span>
+            </div>
+            <div class="student-kpi-box">
+              <span class="kpi-box-label">Attempt Status</span>
+              <span class="kpi-box-val" id="studentModalAttemptStatus">3 / 3</span>
+              <span class="kpi-box-sub" id="studentModalNaStatus">0 Unattempted</span>
+            </div>
+          </div>
+
+          <!-- Section Breakdown Table & Mini Chart -->
+          <div class="student-modal-split">
+            <!-- Left: Section Table -->
+            <div class="student-section-table-wrap">
+              <h4 class="student-split-title">Section-by-Section Performance</h4>
+              <table class="student-sec-table">
+                <thead>
+                  <tr>
+                    <th>Section</th>
+                    <th>Max</th>
+                    <th>Obtained</th>
+                    <th>%</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="studentModalSecTableBody">
+                  <!-- Dynamically populated section scores -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Right: Mini Bar Chart -->
+            <div class="student-chart-wrap">
+              <h4 class="student-split-title">Section Score vs Maximum Marks</h4>
+              <div class="student-modal-chart-canvas">
+                <canvas id="studentModalChartCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer student-modal-footer">
+          <button class="btn btn-outline" id="btnCloseStudentModalBtn" type="button">Close</button>
+          <button class="btn btn-primary" id="btnPrintStudentReport" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>Print Student Report Card</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print-Only Single Student Sheet -->
+    <div id="printStudentSheet" class="print-student-sheet" style="display: none;">
+      <div class="print-header-row">
+        <div>
+          <h1 class="print-college-title">QIS College of Engineering and Technology</h1>
+          <p class="print-college-sub">Autonomous Institution · Department of Placement & Training Assessment</p>
+          <div class="print-report-tag">CT-QISCET TEST REPORT CARD</div>
+        </div>
+        <div class="print-brand-mark">
+          <div class="print-brand-title">CT-QISCET</div>
+          <div class="print-date" id="printReportDate">Date: 29 Oct 2026</div>
+        </div>
+      </div>
+
+      <div class="print-student-bio">
+        <div class="bio-col">
+          <div>Student Name: <strong id="printStudentName">GUDE LAKSHMI LALASYA</strong></div>
+          <div>Member ID / Roll: <strong class="num" id="printStudentId">25491A4243</strong></div>
+          <div>Email: <span id="printStudentEmail">25491a4243@qiscet.edu.in</span></div>
+        </div>
+        <div class="bio-col">
+          <div>Group / Section: <strong id="printStudentGroup">2025-2029-Prime-AIML-1</strong></div>
+          <div>Source Sheet: <span id="printStudentSource">Prime_Batch_1</span></div>
+          <div>Overall Rank: <strong class="num" id="printStudentRank">#4 of 9</strong></div>
+        </div>
+      </div>
+
+      <div class="print-kpis-row" id="printStudentKpis">
+        <!-- Injected during print -->
+      </div>
+
+      <h3 class="print-section-heading">Detailed Section Score Breakdown</h3>
+      <table class="print-table" id="printStudentTable">
+        <!-- Injected during print -->
+      </table>
+
+      <div class="print-footer-row">
+        <div>Generated by CT-QISCET Test Reports Platform · Student Assessment Evaluation</div>
+        <div>Page 1 of 1</div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toastMessage" role="alert" aria-live="polite"></div>
+
+    <!-- Main JavaScript Entry -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
